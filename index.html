@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kvíz Párty</title>
+
+<!-- ===== Firebase (Realtime Database) ===== -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<!-- ===== QR kód ===== -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   NASTAVENÍ VZHLEDU
+   ============================================================ */
+:root{
+  --bg1:#160a36; --bg2:#3a0d63; --bg3:#0b0420;
+  --ink:#f6f1ff; --muted:#b9a9e0;
+  --gold:#ffd23f;
+  --c0:#2f6bff;  /* modrá */
+  --c1:#ff7a1a;  /* oranžová */
+  --c2:#1ed760;  /* zelená */
+  --c3:#ff3da6;  /* růžová */
+  --panel:rgba(255,255,255,.07);
+  --panel-bd:rgba(255,255,255,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:'Inter',sans-serif;
+  color:var(--ink);
+  background:radial-gradient(120% 120% at 50% 0%,var(--bg2) 0%,var(--bg1) 45%,var(--bg3) 100%);
+  background-attachment:fixed;
+  overflow-x:hidden;
+  min-height:100dvh;
+}
+.wrap{min-height:100dvh;display:flex;flex-direction:column;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom))}
+.display{font-family:'Fredoka',sans-serif;font-weight:700;line-height:1.02}
+.hidden{display:none !important}
+button{font-family:inherit;cursor:pointer;border:none;color:inherit}
+.btn{
+  font-family:'Fredoka',sans-serif;font-weight:600;font-size:clamp(18px,5vw,24px);
+  background:var(--gold);color:#2a1500;border-radius:18px;padding:18px 28px;
+  box-shadow:0 8px 0 #b8860b, 0 14px 24px rgba(0,0,0,.35);
+  transition:transform .08s, box-shadow .08s; width:100%;
+}
+.btn:active{transform:translateY(6px);box-shadow:0 2px 0 #b8860b,0 6px 12px rgba(0,0,0,.35)}
+.btn.ghost{background:var(--panel);color:var(--ink);box-shadow:0 6px 0 rgba(0,0,0,.25);border:1px solid var(--panel-bd)}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:22px}
+.eyebrow{font-family:'Fredoka';letter-spacing:.18em;text-transform:uppercase;color:var(--gold);font-size:13px;font-weight:600}
+.card{background:var(--panel);border:1px solid var(--panel-bd);border-radius:24px;padding:24px;backdrop-filter:blur(6px)}
+
+/* ---------- LANDING ---------- */
+.logo{font-size:clamp(48px,14vw,120px);text-shadow:0 6px 0 rgba(0,0,0,.35)}
+.logo .a{color:var(--c0)}.logo .b{color:var(--c1)}.logo .c{color:var(--c2)}.logo .d{color:var(--c3)}
+
+/* ---------- LOBBY (TV) ---------- */
+.code{font-family:'Fredoka';font-weight:700;font-size:clamp(56px,12vw,140px);letter-spacing:.08em;color:var(--gold);text-shadow:0 6px 0 rgba(0,0,0,.3)}
+#qrbox{background:#fff;padding:16px;border-radius:20px;line-height:0}
+.players{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:1100px}
+.pchip{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--panel-bd);border-radius:999px;padding:10px 18px;font-weight:700;font-size:clamp(16px,2.4vw,22px);animation:pop .35s}
+.pdot{width:18px;height:18px;border-radius:50%}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* ---------- OTÁZKA ---------- */
+.qhead{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%}
+.qcount{font-family:'Fredoka';color:var(--muted);font-weight:600;font-size:clamp(14px,2.5vw,20px)}
+.timer{font-family:'Fredoka';font-weight:700;font-size:clamp(34px,7vw,64px);color:var(--gold);min-width:1.6em;text-align:center}
+.qtext{font-family:'Fredoka';font-weight:700;font-size:clamp(26px,5.5vw,60px);line-height:1.1;max-width:1100px;margin:8px auto}
+.qmedia{max-width:min(80vw,560px);max-height:42dvh;border-radius:18px;margin:6px auto;display:block}
+
+/* mřížka odpovědí */
+.answers{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%;max-width:1100px;margin:0 auto}
+.ans{
+  display:flex;align-items:center;gap:14px;text-align:left;
+  border-radius:20px;padding:20px;font-family:'Fredoka';font-weight:600;
+  font-size:clamp(18px,3.2vw,30px);color:#fff;min-height:84px;
+  box-shadow:0 8px 0 rgba(0,0,0,.3),0 12px 22px rgba(0,0,0,.3);
+  transition:transform .1s, box-shadow .1s, opacity .25s, filter .25s;
+}
+.ans .shape{font-size:1.3em;line-height:1;flex:0 0 auto}
+.ans.c0{background:var(--c0)} .ans.c1{background:var(--c1)}
+.ans.c2{background:var(--c2)} .ans.c3{background:var(--c3)}
+.ans.dim{opacity:.28;filter:saturate(.4)}
+.ans.win{animation:winpulse .7s infinite alternate;outline:5px solid #fff}
+@keyframes winpulse{from{transform:scale(1)}to{transform:scale(1.04)}}
+
+/* ovladač – velká buzz tlačítka */
+.buzzgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1;width:100%}
+.buzz{border-radius:24px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;
+  font-family:'Fredoka';font-weight:600;font-size:clamp(17px,5vw,26px);color:#fff;padding:14px;text-align:center;
+  box-shadow:0 10px 0 rgba(0,0,0,.32),0 16px 26px rgba(0,0,0,.32);transition:transform .08s,box-shadow .08s,opacity .2s}
+.buzz .shape{font-size:2.4em;line-height:1}
+.buzz:active{transform:translateY(8px);box-shadow:0 2px 0 rgba(0,0,0,.32)}
+.buzz.c0{background:var(--c0)}.buzz.c1{background:var(--c1)}.buzz.c2{background:var(--c2)}.buzz.c3{background:var(--c3)}
+.buzz:disabled{opacity:.35;filter:saturate(.4)}
+
+/* ---------- ŽEBŘÍČEK ---------- */
+.board{display:flex;flex-direction:column;gap:10px;width:100%;max-width:760px;margin:0 auto}
+.row{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--panel-bd);border-radius:16px;padding:14px 18px;animation:slidein .4s}
+.row .rank{font-family:'Fredoka';font-weight:700;font-size:24px;color:var(--gold);width:36px}
+.row .nm{font-weight:700;font-size:clamp(18px,3vw,24px);flex:1;display:flex;align-items:center;gap:10px}
+.row .sc{font-family:'Fredoka';font-weight:700;font-size:clamp(20px,3.4vw,28px)}
+.row.lead{outline:2px solid var(--gold);background:rgba(255,210,63,.12)}
+@keyframes slidein{from{transform:translateX(-30px);opacity:0}to{transform:none;opacity:1}}
+
+/* ovladač – stavové hlášky */
+.statusbig{font-family:'Fredoka';font-weight:700;font-size:clamp(30px,9vw,56px)}
+.result-ok{color:var(--c2)} .result-no{color:var(--c3)}
+.myscore{font-family:'Fredoka';font-weight:700;font-size:clamp(40px,12vw,70px);color:var(--gold)}
+
+/* výběr avatara */
+.grid-emoji{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.emoji-opt{font-size:30px;background:var(--panel);border:2px solid transparent;border-radius:14px;padding:10px}
+.emoji-opt.sel{border-color:var(--gold);background:rgba(255,210,63,.15)}
+.colors{display:flex;gap:12px;justify-content:center}
+.color-opt{width:46px;height:46px;border-radius:50%;border:3px solid transparent}
+.color-opt.sel{border-color:#fff;transform:scale(1.12)}
+input.txt{width:100%;font-family:'Fredoka';font-size:22px;padding:16px;border-radius:16px;background:rgba(0,0,0,.25);border:2px solid var(--panel-bd);color:var(--ink);text-align:center}
+input.txt:focus{outline:none;border-color:var(--gold)}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#000a;border:1px solid var(--panel-bd);padding:12px 20px;border-radius:999px;font-weight:700}
+@media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+
+<!-- ============ LANDING ============ -->
+<div id="screen-landing" class="wrap">
+  <div class="center">
+    <div class="eyebrow">párty kvíz</div>
+    <div class="logo display"><span class="a">K</span><span class="b">V</span><span class="c">Í</span><span class="d">Z</span></div>
+    <p style="color:var(--muted);max-width:420px">Spusť hru na velké obrazovce. Kamarádi se připojí naskenováním QR kódu telefonem.</p>
+    <div style="display:flex;flex-direction:column;gap:14px;width:min(420px,90vw)">
+      <button class="btn" onclick="becomeHost()">▶ Spustit hru na TV</button>
+      <p style="color:var(--muted);font-size:14px">Hraješ na telefonu? Naskenuj QR od hostitele.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HOST (TV) ============ -->
+<div id="screen-host" class="wrap hidden">
+
+  <!-- LOBBY -->
+  <div id="host-lobby" class="center">
+    <div class="eyebrow">připoj se telefonem</div>
+    <div id="qrbox"></div>
+    <div>
+      <div style="color:var(--muted);font-size:14px;text-align:center">nebo zadej kód na adrese hry</div>
+      <div id="roomcode" class="code">····</div>
+    </div>
+    <div id="lobby-players" class="players"></div>
+    <button id="startbtn" class="btn" style="width:min(420px,90vw)" onclick="startGame()" disabled>Start (čeká na hráče…)</button>
+  </div>
+
+  <!-- OTÁZKA / REVEAL -->
+  <div id="host-question" class="center hidden">
+    <div class="qhead">
+      <div class="qcount" id="h-qcount"></div>
+      <div class="timer" id="h-timer"></div>
+    </div>
+    <div class="qtext display" id="h-qtext"></div>
+    <img id="h-media" class="qmedia hidden" alt="">
+    <div class="answers" id="h-answers"></div>
+    <div id="h-reveal-msg" class="statusbig hidden" style="margin-top:6px"></div>
+    <button id="h-next" class="btn hidden" style="width:min(420px,90vw)" onclick="hostNext()">Další otázka →</button>
+  </div>
+
+  <!-- ŽEBŘÍČEK / KONEC -->
+  <div id="host-board" class="center hidden">
+    <div class="eyebrow" id="b-title">průběžné pořadí</div>
+    <div class="board" id="b-board"></div>
+    <button id="b-continue" class="btn" style="width:min(420px,90vw)" onclick="hostNext()">Další otázka →</button>
+  </div>
+</div>
+
+<!-- ============ OVLADAČ (TELEFON) ============ -->
+<div id="screen-ctrl" class="wrap hidden">
+
+  <!-- PŘIPOJENÍ -->
+  <div id="ctrl-join" class="center">
+    <div class="eyebrow">tvoje postava</div>
+    <div class="card" style="width:min(420px,92vw);display:flex;flex-direction:column;gap:18px">
+      <input id="c-name" class="txt" maxlength="12" placeholder="Tvoje jméno">
+      <div class="grid-emoji" id="c-emoji"></div>
+      <div class="colors" id="c-colors"></div>
+      <button class="btn" onclick="joinGame()">Připojit se</button>
+    </div>
+  </div>
+
+  <!-- ČEKÁNÍ -->
+  <div id="ctrl-wait" class="center hidden">
+    <div class="statusbig display" id="c-wait-emoji">🎮</div>
+    <div class="statusbig display">Připraveno!</div>
+    <p style="color:var(--muted)">Sleduj velkou obrazovku. Hra začne za chvíli.</p>
+  </div>
+
+  <!-- BUZZ -->
+  <div id="ctrl-buzz" style="flex:1;display:flex;flex-direction:column;gap:12px;width:100%">
+    <div class="qhead">
+      <div class="qcount" id="c-rank"></div>
+      <div class="timer" id="c-timer"></div>
+    </div>
+    <div class="qtext display" id="c-qtext" style="font-size:clamp(18px,5.5vw,26px);margin:0"></div>
+    <div class="buzzgrid" id="c-buzz"></div>
+  </div>
+
+  <!-- ZAMČENO / VÝSLEDEK -->
+  <div id="ctrl-result" class="center hidden">
+    <div id="c-result-big" class="statusbig display"></div>
+    <div id="c-result-sub" style="color:var(--muted)"></div>
+    <div class="myscore" id="c-myscore"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+/* ============================================================
+   1) FIREBASE KONFIGURACE  (tvoje – už vyplněno)
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBnCzlECYray96jL-6JY4nG9s5k8y-IWuQ",
+  authDomain: "kviz-f5b92.firebaseapp.com",
+  databaseURL: "https://kviz-f5b92-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "kviz-f5b92",
+  storageBucket: "kviz-f5b92.firebasestorage.app",
+  messagingSenderId: "308650540624",
+  appId: "1:308650540624:web:d9dbbc2c446b4cc6f1db55"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ============================================================
+   2) NASTAVENÍ HRY
+   ============================================================ */
+const SETTINGS = {
+  answerSeconds: 20,     // kolik vteřin mají hráči na odpověď
+  pointsPerCorrect: 1,   // body za správnou odpověď
+  readAloud: true        // TV čte otázky nahlas (jen TV)
+};
+
+/* ============================================================
+   3) OTÁZKY  — tady je můžeš upravovat / přidávat
+   ------------------------------------------------------------
+   - "q"       : text otázky
+   - "a"       : čtyři odpovědi (pořadí = modrá, oranžová, zelená, růžová)
+   - "correct" : index správné (0=modrá, 1=oranžová, 2=zelená, 3=růžová)
+   - "img"     : (nepovinné) obrázek, ukáže se JEN na TV, např. "media/auto.jpg"
+   ============================================================ */
+const QUESTIONS = [
+  { q:"Rozlohou největší země světa?", a:["Kanada","Rusko","Čína","USA"], correct:1 },
+  { q:"Kolik sekund má hodina?", a:["360","600","3600","6000"], correct:2 },
+  { q:"Rok prvního přistání člověka na Měsíci?", a:["1965","1969","1972","1958"], correct:1 },
+  { q:"Měna v Německu?", a:["Marka","Euro","Frank","Libra"], correct:1 },
+  { q:"Kdo napsal „Babičku“?", a:["K. H. Mácha","Božena Němcová","Jan Neruda","Karel Čapek"], correct:1 },
+  { q:"Odmocnina z 81?", a:["7","8","9","11"], correct:2 },
+  { q:"Největší suchozemský savec?", a:["Slon","Nosorožec","Hroch","Žirafa"], correct:0 },
+  { q:"Hlavní město Norska?", a:["Oslo","Bergen","Stockholm","Helsinky"], correct:0 },
+  { q:"Kolik hran má krychle?", a:["6","8","12","16"], correct:2 },
+  { q:"Který kov je za pokojové teploty tekutý?", a:["Rtuť","Železo","Olovo","Hliník"], correct:0 },
+  { q:"Ve kterém státě USA leží Las Vegas?", a:["Kalifornie","Nevada","Arizona","Texas"], correct:1 },
+  { q:"Kdo složil „Ódu na radost“?", a:["Mozart","Beethoven","Bach","Chopin"], correct:1 },
+  { q:"Kolik je 12 × 12?", a:["124","132","144","156"], correct:2 },
+  { q:"Chemická značka kyslíku?", a:["O","K","Ox","Ky"], correct:0 },
+  { q:"Nejvyšší hora Alp?", a:["Matterhorn","Mont Blanc","Eiger","Großglockner"], correct:1 },
+  { q:"Ve které zemi leží Machu Picchu?", a:["Mexiko","Peru","Chile","Bolívie"], correct:1 },
+  { q:"Která řeka protéká Egyptem?", a:["Kongo","Nil","Niger","Zambezi"], correct:1 },
+  { q:"Kolik je 25 % z 80?", a:["15","20","25","40"], correct:1 },
+  { q:"Země vycházejícího slunce?", a:["Čína","Japonsko","Korea","Thajsko"], correct:1 },
+  { q:"Kolik strun mají housle?", a:["Čtyři","Pět","Šest","Sedm"], correct:0 },
+  { q:"Který vitamín si tělo tvoří ze slunce?", a:["A","C","D","B12"], correct:2 },
+  { q:"Hlavní město Řecka?", a:["Atény","Soluň","Sparta","Korfu"], correct:0 },
+  { q:"Kolik je 2⁵?", a:["16","24","32","64"], correct:2 },
+  { q:"Nejdelší pohoří světa na souši?", a:["Himálaj","Andy","Skalnaté hory","Alpy"], correct:1 },
+  { q:"Co měří teploměr?", a:["Teplotu","Tlak","Vlhkost","Rychlost"], correct:0 },
+  { q:"Kdo vymaloval strop Sixtinské kaple?", a:["Michelangelo","Rafael","da Vinci","Botticelli"], correct:0 },
+  { q:"Kolik je 7 × 9?", a:["54","63","72","49"], correct:1 },
+  { q:"Z čeho se vyrábí víno?", a:["Z jablek","Z hroznů","Z chmele","Z brambor"], correct:1 },
+  { q:"Hlavní město Portugalska?", a:["Porto","Lisabon","Madrid","Faro"], correct:1 },
+  { q:"Hlavní město Švédska?", a:["Stockholm","Kodaň","Helsinky","Oslo"], correct:0 },
+  // Příklad otázky s obrázkem (ukáže se jen na TV):
+  // { q:"Jaké auto to je?", a:["BMW Z4","Mercedes SLK","Porsche Boxster","Audi TT"], correct:0, img:"media/auto.jpg" },
+];
+
+/* barvy + tvary + názvy (pro čtení nahlas) */
+const COLORS = ["#2f6bff","#ff7a1a","#1ed760","#ff3da6"];
+const SHAPES = ["▲","◆","●","■"];
+const COLOR_NAMES = ["modrá","oranžová","zelená","růžová"];
+const AVATARS = ["🦊","🐼","🐸","🦄","🐲","🦁","🐙","👾","🤖","🦖","🐝","🦉","🐧","🦋","🌮"];
+
+/* ============================================================
+   4) POMOCNÉ
+   ============================================================ */
+const $=id=>document.getElementById(id);
+function show(id){["screen-landing","screen-host","screen-ctrl"].forEach(s=>$(s).classList.toggle("hidden",s!==id));}
+function sub(parent,active){ // přepínání podobrazovek
+  Object.keys(parent).forEach(k=>$(parent[k]).classList.toggle("hidden",parent[k]!==active));
+}
+function toast(msg){const t=$("toast");t.textContent=msg;t.classList.remove("hidden");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add("hidden"),2200);}
+function randCode(){const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(let i=0;i<4;i++)s+=A[Math.floor(Math.random()*A.length)];return s;}
+function uid(){return "p"+Math.random().toString(36).slice(2,9);}
+
+/* čtení nahlas – jen TV */
+let voiceCS=null;
+function pickVoice(){const v=speechSynthesis.getVoices();voiceCS=v.find(x=>x.lang&&x.lang.toLowerCase().startsWith("cs"))||null;}
+if("speechSynthesis"in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice;}
+function speak(text,cb){
+  if(!SETTINGS.readAloud||!("speechSynthesis"in window)){if(cb)cb();return;}
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang="cs-CZ";if(voiceCS)u.voice=voiceCS;u.rate=1.02;u.pitch=1;
+  if(cb)u.onend=cb;
+  speechSynthesis.speak(u);
+}
+
+/* jednoduché zvuky (Web Audio) */
+let actx=null;
+function beep(freq,dur,type){try{if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();const o=actx.createOscillator(),g=actx.createGain();o.type=type||"square";o.frequency.value=freq;o.connect(g);g.connect(actx.destination);g.gain.setValueAtTime(.15,actx.currentTime);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+dur);o.start();o.stop(actx.currentTime+dur);}catch(e){}}
+function sndBuzz(){beep(440,.12,"square");}
+function sndCorrect(){beep(660,.1);setTimeout(()=>beep(880,.18),90);}
+function sndTick(){beep(300,.04,"sine");}
+
+/* ============================================================
+   5) ROUTOVÁNÍ ROLÍ
+   ============================================================ */
+const params=new URLSearchParams(location.search);
+const ctrlRoom=(params.get("room")||"").toUpperCase();
+let ROOM=null;
+
+if(ctrlRoom){ ROOM=ctrlRoom; startController(); }
+else { show("screen-landing"); }
+
+/* ============================================================
+   6) HOST (TV)
+   ============================================================ */
+const hostSub={lobby:"host-lobby",question:"host-question",board:"host-board"};
+let hostPlayers={};      // pid -> {name,avatar,color,score,connected}
+let hostUnsub=[];
+let timerInt=null;
+
+function becomeHost(){
+  if(actx===null){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  speak(" "); // odemkne hlas (potřebuje kliknutí)
+  ROOM=randCode();
+  show("screen-host");sub(hostSub,"host-lobby");
+  const base={
+    meta:{ state:"lobby", started:false, qIndex:-1, locked:true, deadline:0, total:QUESTIONS.length },
+  };
+  db.ref("rooms/"+ROOM).set(base).then(()=>{
+    $("roomcode").textContent=ROOM;
+    const url=location.origin+location.pathname+"?room="+ROOM;
+    $("qrbox").innerHTML="";
+    new QRCode($("qrbox"),{text:url,width:240,height:240,colorDark:"#160a36",colorLight:"#ffffff"});
+    // poslouchej hráče
+    db.ref("rooms/"+ROOM+"/players").on("value",snap=>{
+      hostPlayers=snap.val()||{};
+      renderLobbyPlayers();
+      const n=Object.keys(hostPlayers).length;
+      const sb=$("startbtn");
+      sb.disabled=(n===0);
+      sb.textContent=n===0?"Start (čeká na hráče…)":"Start ("+n+" hráčů) ▶";
+    });
+  });
+}
+
+function renderLobbyPlayers(){
+  const box=$("lobby-players");box.innerHTML="";
+  Object.values(hostPlayers).forEach(p=>{
+    const c=document.createElement("div");c.className="pchip";
+    c.innerHTML='<span class="pdot" style="background:'+(p.color||"#fff")+'"></span><span>'+(p.avatar||"🙂")+' '+escapeHtml(p.name||"?")+'</span>';
+    box.appendChild(c);
+  });
+}
+function escapeHtml(s){return (s+"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+function startGame(){
+  db.ref("rooms/"+ROOM+"/meta").update({started:true});
+  db.ref("rooms/"+ROOM+"/players").off();        // lobby zamčeno
+  db.ref("rooms/"+ROOM+"/players").on("value",s=>{hostPlayers=s.val()||{};}); // dál sleduj skóre/odpojení
+  hostShowQuestion(0);
+}
+
+function hostShowQuestion(i){
+  clearInterval(timerInt);
+  const Q=QUESTIONS[i];
+  sub(hostSub,"host-question");
+  $("h-reveal-msg").classList.add("hidden");
+  $("h-next").classList.add("hidden");
+  $("h-qcount").textContent="Otázka "+(i+1)+" / "+QUESTIONS.length;
+  $("h-qtext").textContent=Q.q;
+  // obrázek jen na TV
+  const m=$("h-media");
+  if(Q.img){m.src=Q.img;m.classList.remove("hidden");}else{m.classList.add("hidden");m.removeAttribute("src");}
+  // odpovědi
+  const box=$("h-answers");box.innerHTML="";
+  Q.a.forEach((txt,idx)=>{
+    const d=document.createElement("div");d.className="ans c"+idx;d.dataset.idx=idx;
+    d.innerHTML='<span class="shape">'+SHAPES[idx]+'</span><span>'+escapeHtml(txt)+'</span>';
+    box.appendChild(d);
+  });
+  $("h-timer").textContent="";
+  // stav: otázka, zatím zamčeno (čte se)
+  db.ref("rooms/"+ROOM+"/meta").update({state:"question",qIndex:i,locked:true,deadline:0});
+  db.ref("rooms/"+ROOM+"/answers/"+i).remove();
+
+  // přečti otázku + odpovědi, pak odemkni a spusť odpočet
+  const speech=Q.q+". Možnosti: "+Q.a.map((t,k)=>COLOR_NAMES[k]+": "+t).join(", ")+".";
+  speak(speech,()=>hostUnlock(i));
+  if(!SETTINGS.readAloud) setTimeout(()=>hostUnlock(i),600);
+}
+
+function hostUnlock(i){
+  const deadline=Date.now()+SETTINGS.answerSeconds*1000;
+  db.ref("rooms/"+ROOM+"/meta").update({locked:false,deadline:deadline});
+  // sleduj odpovědi -> konec když odpoví všichni
+  db.ref("rooms/"+ROOM+"/answers/"+i).on("value",snap=>{
+    const ans=snap.val()||{};
+    const answered=Object.keys(ans).length;
+    const connected=Object.values(hostPlayers).filter(p=>p.connected!==false).length;
+    if(connected>0&&answered>=connected){hostReveal(i);}
+  });
+  // odpočet
+  let left=SETTINGS.answerSeconds;
+  $("h-timer").textContent=left;
+  timerInt=setInterval(()=>{
+    left=Math.max(0,Math.ceil((deadline-Date.now())/1000));
+    $("h-timer").textContent=left;
+    if(left<=5&&left>0)sndTick();
+    if(left<=0){clearInterval(timerInt);hostReveal(i);}
+  },250);
+}
+
+function hostReveal(i){
+  clearInterval(timerInt);
+  db.ref("rooms/"+ROOM+"/answers/"+i).off();
+  const Q=QUESTIONS[i];
+  // spočítej skóre
+  db.ref("rooms/"+ROOM+"/answers/"+i).once("value").then(snap=>{
+    const ans=snap.val()||{};
+    let correctCount=0;const updates={};
+    Object.keys(ans).forEach(pid=>{
+      if(ans[pid]===Q.correct){
+        correctCount++;
+        const cur=(hostPlayers[pid]&&hostPlayers[pid].score)||0;
+        updates["players/"+pid+"/score"]=cur+SETTINGS.pointsPerCorrect;
+      }
+    });
+    db.ref("rooms/"+ROOM).update(updates);
+    db.ref("rooms/"+ROOM+"/meta").update({state:"reveal",locked:true});
+
+    // vizuál: zvýrazni správnou, ostatní ztlum
+    document.querySelectorAll("#h-answers .ans").forEach(el=>{
+      const idx=+el.dataset.idx;
+      if(idx===Q.correct){el.classList.add("win");}else{el.classList.add("dim");}
+    });
+    sndCorrect();
+    // hláška + čtení
+    const msgEl=$("h-reveal-msg");msgEl.classList.remove("hidden");
+    if(correctCount===0){
+      const noOne=["Tohle nikdo nedal!","Nula správných — pěkně záludné!","To bylo těžké, co? Nikdo netrefil.","Ani jeden! Příště to vyjde."];
+      const t=noOne[Math.floor(Math.random()*noOne.length)];
+      msgEl.textContent=t;
+      speak(t+" Správně bylo: "+Q.a[Q.correct]+".");
+    }else{
+      msgEl.textContent="Správně: "+Q.a[Q.correct];
+      speak("Správně bylo: "+Q.a[Q.correct]+".");
+    }
+    // po chvilce ukaž žebříček
+    setTimeout(()=>showBoard(i),2600);
+  });
+}
+
+function showBoard(i){
+  sub(hostSub,"host-board");
+  const last=(i>=QUESTIONS.length-1);
+  $("b-title").textContent=last?"konec hry — výsledky":"průběžné pořadí";
+  $("b-continue").textContent=last?"Hrát znovu":"Další otázka →";
+  renderBoard($("b-board"),true);
+  if(last){db.ref("rooms/"+ROOM+"/meta").update({state:"finished"});}
+}
+
+function renderBoard(container,full){
+  container.innerHTML="";
+  const arr=Object.entries(hostPlayers).map(([pid,p])=>({pid,...p,score:p.score||0}));
+  arr.sort((a,b)=>b.score-a.score);
+  arr.slice(0,full?20:5).forEach((p,idx)=>{
+    const r=document.createElement("div");r.className="row"+(idx===0?" lead":"");
+    r.innerHTML='<div class="rank">'+(idx+1)+'.</div>'+
+      '<div class="nm"><span class="pdot" style="background:'+(p.color||"#fff")+'"></span>'+(p.avatar||"")+' '+escapeHtml(p.name||"?")+'</div>'+
+      '<div class="sc">'+p.score+'</div>';
+    container.appendChild(r);
+  });
+}
+
+function hostNext(){
+  db.ref("rooms/"+ROOM+"/meta/qIndex").once("value").then(s=>{
+    const i=s.val();
+    if(i>=QUESTIONS.length-1){
+      // restart
+      const updates={};
+      Object.keys(hostPlayers).forEach(pid=>updates["players/"+pid+"/score"]=0);
+      db.ref("rooms/"+ROOM).update(updates).then(()=>hostShowQuestion(0));
+    }else{
+      hostShowQuestion(i+1);
+    }
+  });
+}
+
+/* ============================================================
+   7) OVLADAČ (TELEFON)
+   ============================================================ */
+const ctrlSub={join:"ctrl-join",wait:"ctrl-wait",buzz:"ctrl-buzz",result:"ctrl-result"};
+let myPid=null,myAnswer=null,myColor=COLORS[0],myAvatar=AVATARS[0],lastState="",lastQ=-1,ctrlTimerInt=null;
+
+function startController(){
+  show("screen-ctrl");
+  // zkontroluj, že místnost existuje
+  db.ref("rooms/"+ROOM+"/meta").once("value").then(s=>{
+    if(!s.exists()){sub(ctrlSub,"join");$("ctrl-join").innerHTML='<div class="center"><div class="statusbig display">🚫</div><p>Tahle hra už neběží.<br>Naskenuj aktuální QR kód od hostitele.</p></div>';return;}
+    const meta=s.val();
+    buildJoinUI();
+    // reconnect: máme uloženého hráče?
+    const saved=localStorage.getItem("kviz_"+ROOM);
+    if(saved){
+      myPid=saved;
+      db.ref("rooms/"+ROOM+"/players/"+myPid).once("value").then(ps=>{
+        if(ps.exists()){
+          const p=ps.val();myColor=p.color;myAvatar=p.avatar;
+          db.ref("rooms/"+ROOM+"/players/"+myPid+"/connected").set(true);
+          db.ref("rooms/"+ROOM+"/players/"+myPid+"/connected").onDisconnect().set(false);
+          attachCtrlListener();
+        }else{sub(ctrlSub,"join");}
+      });
+    }else{
+      if(meta.started){ // hra už běží – pozdní příchozí
+        sub(ctrlSub,"join");
+        $("ctrl-join").querySelector(".eyebrow").textContent="hra už běží – připoj se na další";
+      }else{
+        sub(ctrlSub,"join");
+      }
+    }
+  });
+}
+
+function buildJoinUI(){
+  const eb=$("c-emoji");eb.innerHTML="";
+  AVATARS.forEach((e,i)=>{
+    const b=document.createElement("button");b.className="emoji-opt"+(i===0?" sel":"");b.textContent=e;
+    b.onclick=()=>{myAvatar=e;document.querySelectorAll("#c-emoji .emoji-opt").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");};
+    eb.appendChild(b);
+  });
+  const cb=$("c-colors");cb.innerHTML="";
+  COLORS.forEach((c,i)=>{
+    const b=document.createElement("button");b.className="color-opt"+(i===0?" sel":"");b.style.background=c;
+    b.onclick=()=>{myColor=c;document.querySelectorAll("#c-colors .color-opt").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");};
+    cb.appendChild(b);
+  });
+}
+
+function joinGame(){
+  const name=($("c-name").value||"").trim()||"Hráč";
+  myPid=uid();
+  localStorage.setItem("kviz_"+ROOM,myPid);
+  const pref=db.ref("rooms/"+ROOM+"/players/"+myPid);
+  pref.set({name:name,avatar:myAvatar,color:myColor,score:0,connected:true});
+  pref.child("connected").onDisconnect().set(false);
+  $("c-wait-emoji").textContent=myAvatar;
+  attachCtrlListener();
+}
+
+function attachCtrlListener(){
+  db.ref("rooms/"+ROOM+"/meta").on("value",snap=>{
+    const m=snap.val();if(!m)return;
+    ctrlRender(m);
+  });
+}
+
+function ctrlRender(m){
+  // konec
+  if(m.state==="finished"){renderCtrlResult(m,true);return;}
+  // lobby / čekání
+  if(m.state==="lobby"||(m.state!=="question"&&m.state!=="reveal")){sub(ctrlSub,"wait");return;}
+
+  if(m.state==="question"){
+    if(m.locked){ // čte se, ještě nelze
+      if(myAnswer!==null&&m.qIndex===lastQ){return;} // už odpovězeno, počkej
+      sub(ctrlSub,"wait");$("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Připrav se…";
+      return;
+    }
+    // nová otázka -> reset
+    if(m.qIndex!==lastQ){lastQ=m.qIndex;myAnswer=null;buildBuzz(m.qIndex);}
+    if(myAnswer!==null){showLocked();return;}
+    sub(ctrlSub,"buzz");
+    startCtrlTimer(m.deadline);
+    updateRank();
+    return;
+  }
+
+  if(m.state==="reveal"){
+    clearInterval(ctrlTimerInt);
+    renderCtrlResult(m,false);
+  }
+}
+
+function buildBuzz(qi){
+  const Q=QUESTIONS[qi];
+  $("c-qtext").textContent=Q.q;
+  const box=$("c-buzz");box.innerHTML="";
+  Q.a.forEach((txt,idx)=>{
+    const b=document.createElement("button");b.className="buzz c"+idx;
+    b.innerHTML='<span class="shape">'+SHAPES[idx]+'</span><span>'+escapeHtml(txt)+'</span>';
+    b.onclick=()=>sendAnswer(qi,idx);
+    box.appendChild(b);
+  });
+}
+
+function sendAnswer(qi,idx){
+  if(myAnswer!==null)return;
+  myAnswer=idx;
+  db.ref("rooms/"+ROOM+"/answers/"+qi+"/"+myPid).set(idx);
+  sndBuzz();
+  if(navigator.vibrate)navigator.vibrate(40);
+  showLocked();
+}
+
+function showLocked(){
+  sub(ctrlSub,"result");
+  $("c-result-big").className="statusbig display";
+  $("c-result-big").textContent="Zamčeno ✓";
+  $("c-result-sub").textContent="Sleduj velkou obrazovku…";
+  $("c-myscore").textContent="";
+}
+
+function startCtrlTimer(deadline){
+  clearInterval(ctrlTimerInt);
+  function tick(){const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));$("c-timer").textContent=left;if(left<=0)clearInterval(ctrlTimerInt);}
+  tick();ctrlTimerInt=setInterval(tick,250);
+}
+
+function updateRank(){
+  db.ref("rooms/"+ROOM+"/players").once("value").then(s=>{
+    const players=s.val()||{};
+    const arr=Object.entries(players).map(([pid,p])=>({pid,score:p.score||0}));
+    arr.sort((a,b)=>b.score-a.score);
+    const pos=arr.findIndex(x=>x.pid===myPid)+1;
+    $("c-rank").textContent=pos+". místo / "+arr.length;
+  });
+}
+
+function renderCtrlResult(m,finished){
+  sub(ctrlSub,"result");
+  const qi=m.qIndex;const Q=QUESTIONS[qi];
+  db.ref("rooms/"+ROOM+"/players").once("value").then(s=>{
+    const players=s.val()||{};
+    const me=players[myPid]||{score:0};
+    const arr=Object.entries(players).map(([pid,p])=>({pid,...p,score:p.score||0}));
+    arr.sort((a,b)=>b.score-a.score);
+    const pos=arr.findIndex(x=>x.pid===myPid)+1;
+
+    if(finished){
+      const win=arr[0];
+      $("c-result-big").className="statusbig display";
+      $("c-result-big").innerHTML=(win&&win.pid===myPid)?"👑 Vyhrál jsi!":"Konec hry";
+      $("c-result-sub").textContent=pos+". místo z "+arr.length;
+      $("c-myscore").textContent=me.score+" b.";
+      return;
+    }
+    const correct=(myAnswer===Q.correct);
+    $("c-result-big").className="statusbig display "+(correct?"result-ok":"result-no");
+    $("c-result-big").textContent=correct?"✓ Správně!":(myAnswer===null?"⏱ Nestihl jsi":"✗ Špatně");
+    $("c-result-sub").textContent="Správně bylo: "+Q.a[Q.correct]+"  •  "+pos+". místo";
+    $("c-myscore").textContent=me.score+" b.";
+  });
+}
+</script>
+</body>
+</html>
