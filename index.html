@@ -522,7 +522,7 @@ function startController(){
   show("screen-ctrl");
   // zkontroluj, že místnost existuje
   db.ref("rooms/"+ROOM+"/meta").once("value").then(s=>{
-    if(!s.exists()){sub(ctrlSub,"join");$("ctrl-join").innerHTML='<div class="center"><div class="statusbig display">🚫</div><p>Tahle hra už neběží.<br>Naskenuj aktuální QR kód od hostitele.</p></div>';return;}
+    if(!s.exists()){sub(ctrlSub,"ctrl-join");$("ctrl-join").innerHTML='<div class="center"><div class="statusbig display">🚫</div><p>Tahle hra už neběží.<br>Naskenuj aktuální QR kód od hostitele.</p></div>';return;}
     const meta=s.val();
     buildJoinUI();
     // reconnect: máme uloženého hráče?
@@ -535,14 +535,14 @@ function startController(){
           db.ref("rooms/"+ROOM+"/players/"+myPid+"/connected").set(true);
           db.ref("rooms/"+ROOM+"/players/"+myPid+"/connected").onDisconnect().set(false);
           attachCtrlListener();
-        }else{sub(ctrlSub,"join");}
+        }else{sub(ctrlSub,"ctrl-join");}
       });
     }else{
       if(meta.started){ // hra už běží – pozdní příchozí
-        sub(ctrlSub,"join");
+        sub(ctrlSub,"ctrl-join");
         $("ctrl-join").querySelector(".eyebrow").textContent="hra už běží – připoj se na další";
       }else{
-        sub(ctrlSub,"join");
+        sub(ctrlSub,"ctrl-join");
       }
     }
   });
@@ -585,18 +585,18 @@ function ctrlRender(m){
   // konec
   if(m.state==="finished"){renderCtrlResult(m,true);return;}
   // lobby / čekání
-  if(m.state==="lobby"||(m.state!=="question"&&m.state!=="reveal")){sub(ctrlSub,"wait");return;}
+  if(m.state==="lobby"||(m.state!=="question"&&m.state!=="reveal")){sub(ctrlSub,"ctrl-wait");return;}
 
   if(m.state==="question"){
     if(m.locked){ // čte se, ještě nelze
       if(myAnswer!==null&&m.qIndex===lastQ){return;} // už odpovězeno, počkej
-      sub(ctrlSub,"wait");$("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Připrav se…";
+      sub(ctrlSub,"ctrl-wait");$("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Připrav se…";
       return;
     }
     // nová otázka -> reset
     if(m.qIndex!==lastQ){lastQ=m.qIndex;myAnswer=null;buildBuzz(m.qIndex);}
     if(myAnswer!==null){showLocked();return;}
-    sub(ctrlSub,"buzz");
+    sub(ctrlSub,"ctrl-buzz");
     startCtrlTimer(m.deadline);
     updateRank();
     return;
@@ -630,7 +630,7 @@ function sendAnswer(qi,idx){
 }
 
 function showLocked(){
-  sub(ctrlSub,"result");
+  sub(ctrlSub,"ctrl-result");
   $("c-result-big").className="statusbig display";
   $("c-result-big").textContent="Zamčeno ✓";
   $("c-result-sub").textContent="Sleduj velkou obrazovku…";
@@ -654,7 +654,7 @@ function updateRank(){
 }
 
 function renderCtrlResult(m,finished){
-  sub(ctrlSub,"result");
+  sub(ctrlSub,"ctrl-result");
   const qi=m.qIndex;const Q=QUESTIONS[qi];
   db.ref("rooms/"+ROOM+"/players").once("value").then(s=>{
     const players=s.val()||{};
