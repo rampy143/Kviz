@@ -251,7 +251,7 @@ const SETTINGS = {
   answerSeconds: 10,     // kolik vteřin mají hráči na odpověď
   pointsPerCorrect: 1,   // body za správnou odpověď
   readAloud: true,       // TV čte otázky nahlas (jen TV)
-  speechRate: 1.3        // rychlost čtení (1.0 = normál, výš = rychleji)
+  speechRate: 1.0        // rychlost čtení (1.0 = přirozené lidské tempo)
 };
 
 /* ============================================================
@@ -542,7 +542,26 @@ function gameLen(){ return (gameQ&&gameQ.length)?gameQ.length:Math.min(SETTINGS.
 
 /* čtení nahlas – jen TV */
 let voiceCS=null;
-function pickVoice(){const v=speechSynthesis.getVoices();voiceCS=v.find(x=>x.lang&&x.lang.toLowerCase().startsWith("cs"))||null;}
+function pickVoice(){
+  const all=speechSynthesis.getVoices();
+  // 1) preferuj češtinu, jinak slovenštinu (zní česky líp než anglický hlas)
+  let v=all.filter(x=>x.lang&&x.lang.toLowerCase().startsWith("cs"));
+  if(!v.length) v=all.filter(x=>x.lang&&x.lang.toLowerCase().startsWith("sk"));
+  if(!v.length){ voiceCS=null; return; }
+  // 2) ohodnoť kvalitu podle názvu – neuronové/online/Google bývají nejpřirozenější
+  const score=(x)=>{
+    const n=(x.name||"").toLowerCase(); let s=0;
+    if(/natural|neural|online/.test(n)) s+=60;   // moderní neuronové hlasy
+    if(n.includes("google"))            s+=45;
+    if(n.includes("microsoft"))         s+=25;
+    if(/vlasta|jakub|iveta|zuzana/.test(n)) s+=15; // známé kvalitní české hlasy
+    if(!x.localService)                 s+=10;   // cloudové bývají lepší než lokální
+    if(/espeak|e-speak|compact|robot/.test(n)) s-=80; // robotické – až úplně nakonec
+    return s;
+  };
+  v.sort((a,b)=>score(b)-score(a));
+  voiceCS=v[0];
+}
 if("speechSynthesis"in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice;}
 function speak(text,cb){
   let fired=false;
@@ -551,7 +570,7 @@ function speak(text,cb){
   try{
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
-    u.lang="cs-CZ";if(voiceCS)u.voice=voiceCS;u.rate=SETTINGS.speechRate;u.pitch=1;
+    u.lang=(voiceCS&&voiceCS.lang)||"cs-CZ"; if(voiceCS)u.voice=voiceCS; u.rate=SETTINGS.speechRate; u.pitch=1; u.volume=1;
     u.onend=fire; u.onerror=fire;
     speechSynthesis.speak(u);
     // pojistka: kdyby hlas selhal/zasekl se, přesto odemkni (odhad podle délky textu)
@@ -674,7 +693,7 @@ function readThenUnlock(text,cb){
   try{
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
-    u.lang="cs-CZ";if(voiceCS)u.voice=voiceCS;u.rate=SETTINGS.speechRate;u.pitch=1;
+    u.lang=(voiceCS&&voiceCS.lang)||"cs-CZ"; if(voiceCS)u.voice=voiceCS; u.rate=SETTINGS.speechRate; u.pitch=1; u.volume=1;
     u.onend=fire; u.onerror=fire;
     speechSynthesis.speak(u);
     iv=setInterval(()=>{
