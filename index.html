@@ -65,6 +65,7 @@ button{font-family:inherit;cursor:pointer;border:none;color:inherit}
 #qrbox{background:#fff;padding:16px;border-radius:20px;line-height:0}
 .players{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:1100px}
 .pchip{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--panel-bd);border-radius:999px;padding:10px 18px;font-weight:700;font-size:clamp(16px,2.4vw,22px);animation:pop .35s}
+.pchip.offline{opacity:.4}
 .pdot{width:18px;height:18px;border-radius:50%}
 @keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
 
@@ -102,12 +103,18 @@ button{font-family:inherit;cursor:pointer;border:none;color:inherit}
 .buzz:disabled{opacity:.35;filter:saturate(.4)}
 
 /* ---------- ŽEBŘÍČEK ---------- */
-.board{display:flex;flex-direction:column;gap:10px;width:100%;max-width:760px;margin:0 auto}
-.row{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--panel-bd);border-radius:16px;padding:14px 18px;animation:slidein .4s}
-.row .rank{font-family:'Baloo 2';font-weight:700;font-size:24px;color:var(--gold);width:36px}
+.board{display:flex;flex-direction:column;gap:10px;width:100%;max-width:760px;margin:0 auto;max-height:62dvh;overflow-y:auto;scrollbar-width:none}
+.board::-webkit-scrollbar{display:none}
+.row{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--panel-bd);border-radius:16px;padding:14px 18px;animation:slidein .4s;flex:0 0 auto}
+.row .rank{font-family:'Baloo 2';font-weight:700;font-size:24px;color:var(--gold);width:44px;text-align:center}
 .row .nm{font-weight:700;font-size:clamp(18px,3vw,24px);flex:1;display:flex;align-items:center;gap:10px}
 .row .sc{font-family:'Baloo 2';font-weight:700;font-size:clamp(20px,3.4vw,28px)}
 .row.lead{outline:2px solid var(--gold);background:rgba(255,210,63,.12)}
+.row.me{outline:3px solid #fff;background:rgba(255,255,255,.14)}
+.row.gap{justify-content:center;padding:6px;opacity:.6;animation:none}
+.row.gap .rank{width:auto;color:var(--muted);letter-spacing:.2em}
+.row.offline{opacity:.45}
+.pdot.off{filter:grayscale(1);opacity:.4}
 @keyframes slidein{from{transform:translateX(-30px);opacity:0}to{transform:none;opacity:1}}
 
 /* ovladač – stavové hlášky */
@@ -119,6 +126,8 @@ button{font-family:inherit;cursor:pointer;border:none;color:inherit}
 .grid-emoji{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;max-height:34dvh;overflow-y:auto;padding:2px}
 .emoji-opt{font-size:26px;background:var(--panel);border:2px solid transparent;border-radius:12px;padding:8px;aspect-ratio:1;display:flex;align-items:center;justify-content:center}
 .emoji-opt.sel{border-color:var(--gold);background:rgba(255,210,63,.15)}
+.emoji-opt.taken{opacity:.22;filter:grayscale(1);cursor:not-allowed;position:relative}
+.emoji-opt:disabled{cursor:not-allowed}
 .colors{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .color-opt{width:40px;height:40px;border-radius:50%;border:3px solid transparent;flex:0 0 auto}
 .color-opt.sel{border-color:#fff;transform:scale(1.12)}
@@ -173,7 +182,7 @@ input.txt:focus{outline:none;border-color:var(--gold)}
 
   <!-- ŽEBŘÍČEK / KONEC -->
   <div id="host-board" class="center hidden">
-    <div class="eyebrow" id="b-title">průběžné pořadí</div>
+    <div class="display" id="b-title" style="font-size:clamp(26px,5.5vw,46px);color:var(--gold)">průběžné pořadí</div>
     <div class="board" id="b-board"></div>
     <button id="b-continue" class="btn" style="width:min(420px,90vw)" onclick="hostNext()">Další otázka →</button>
   </div>
@@ -188,7 +197,6 @@ input.txt:focus{outline:none;border-color:var(--gold)}
     <div class="card" style="width:min(420px,92vw);max-height:88dvh;overflow-y:auto;display:flex;flex-direction:column;gap:16px">
       <input id="c-name" class="txt" maxlength="12" placeholder="Tvoje jméno">
       <div class="grid-emoji" id="c-emoji"></div>
-      <div class="colors" id="c-colors"></div>
       <button class="btn" onclick="joinGame()">Připojit se</button>
     </div>
   </div>
@@ -211,10 +219,11 @@ input.txt:focus{outline:none;border-color:var(--gold)}
   </div>
 
   <!-- ZAMČENO / VÝSLEDEK -->
-  <div id="ctrl-result" class="center hidden">
+  <div id="ctrl-result" class="center hidden" style="overflow-y:auto;gap:14px;justify-content:flex-start;padding-top:18px">
     <div id="c-result-big" class="statusbig display"></div>
     <div id="c-result-sub" style="color:var(--muted)"></div>
     <div class="myscore" id="c-myscore"></div>
+    <div class="board" id="c-board" style="max-height:46dvh"></div>
   </div>
 </div>
 
@@ -352,6 +361,7 @@ const hostSub={lobby:"host-lobby",question:"host-question",board:"host-board"};
 let hostPlayers={};      // pid -> {name,avatar,color,score,connected}
 let hostUnsub=[];
 let timerInt=null;
+let prevStandings=[], prevScores={}, boardScrollAnim=null;
 
 function becomeHost(){
   if(actx===null){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}
@@ -381,14 +391,17 @@ function becomeHost(){
 function renderLobbyPlayers(){
   const box=$("lobby-players");box.innerHTML="";
   Object.values(hostPlayers).forEach(p=>{
-    const c=document.createElement("div");c.className="pchip";
-    c.innerHTML='<span class="pdot" style="background:'+(p.color||"#fff")+'"></span><span>'+(p.avatar||"🙂")+' '+escapeHtml(p.name||"?")+'</span>';
+    const online=(p.connected!==false);
+    const c=document.createElement("div");c.className="pchip"+(online?"":" offline");
+    c.innerHTML='<span class="pdot '+(online?"":"off")+'" style="background:'+(p.color||"#fff")+'"></span><span>'+(p.avatar||"🙂")+' '+escapeHtml(p.name||"?")+'</span>';
     box.appendChild(c);
   });
 }
 function escapeHtml(s){return (s+"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
 function startGame(){
+  if(Object.keys(hostPlayers).length===0){ toast("Připoj nejdřív aspoň jednoho hráče"); return; }
+  prevStandings=[]; prevScores={};
   db.ref("rooms/"+ROOM+"/meta").update({started:true});
   db.ref("rooms/"+ROOM+"/players").off();        // lobby zamčeno
   db.ref("rooms/"+ROOM+"/players").on("value",s=>{hostPlayers=s.val()||{};}); // dál sleduj skóre/odpojení
@@ -397,6 +410,7 @@ function startGame(){
 
 function hostShowQuestion(i){
   clearInterval(timerInt);
+  cancelBoardScroll();
   const Q=QUESTIONS[i];
   sub(hostSub,"host-question");
   $("h-reveal-msg").classList.add("hidden");
@@ -490,20 +504,108 @@ function showBoard(i){
   const last=(i>=QUESTIONS.length-1);
   $("b-title").textContent=last?"konec hry — výsledky":"průběžné pořadí";
   $("b-continue").textContent=last?"Hrát znovu":"Další otázka →";
-  renderBoard($("b-board"),true);
+  renderBoardTV($("b-board"));
   if(last){db.ref("rooms/"+ROOM+"/meta").update({state:"finished"});}
 }
 
-function renderBoard(container,full){
-  container.innerHTML="";
+function sortedPlayers(){
   const arr=Object.entries(hostPlayers).map(([pid,p])=>({pid,...p,score:p.score||0}));
   arr.sort((a,b)=>b.score-a.score);
-  arr.slice(0,full?20:5).forEach((p,idx)=>{
-    const r=document.createElement("div");r.className="row"+(idx===0?" lead":"");
-    r.innerHTML='<div class="rank">'+(idx+1)+'.</div>'+
-      '<div class="nm"><span class="pdot" style="background:'+(p.color||"#fff")+'"></span>'+(p.avatar||"")+' '+escapeHtml(p.name||"?")+'</div>'+
-      '<div class="sc">'+p.score+'</div>';
+  return arr;
+}
+
+function animateNumber(el,from,to,dur){
+  if(from===to){el.textContent=to;return;}
+  const t0=performance.now();
+  (function step(t){const k=Math.min(1,(t-t0)/dur);el.textContent=Math.round(from+(to-from)*k);if(k<1)requestAnimationFrame(step);})(t0);
+}
+
+function renderBoardTV(container){
+  container.innerHTML="";
+  const medal=["🥇","🥈","🥉"];
+  const ROWH=66;
+  const arr=sortedPlayers();
+  arr.forEach((p,idx)=>{
+    const online=(p.connected!==false);
+    const r=document.createElement("div");
+    r.className="row"+(idx===0?" lead":"")+(online?"":" offline");
+    r.innerHTML='<div class="rank">'+(idx<3?medal[idx]:(idx+1)+".")+'</div>'+
+      '<div class="nm"><span class="pdot '+(online?"":"off")+'" style="background:'+(p.color||"#fff")+'"></span>'+(p.avatar||"")+' '+escapeHtml(p.name||"?")+'</div>'+
+      '<div class="sc" data-to="'+p.score+'">0</div>';
+    // dojezd na pozici z předchozího pořadí
+    const oldIdx=prevStandings.indexOf(p.pid);
+    r.style.animation="none";
+    r.style.transition="none";
+    r.style.transform="translateY("+(((oldIdx>=0?oldIdx:idx)-idx)*ROWH)+"px)";
+    r.style.opacity=(oldIdx>=0)?"1":"0";
     container.appendChild(r);
+  });
+  // spustit dojezd
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    container.querySelectorAll(".row").forEach(r=>{
+      r.style.transition="transform .85s cubic-bezier(.2,.85,.25,1), opacity .5s";
+      r.style.transform="translateY(0)"; r.style.opacity="1";
+    });
+  }));
+  // count-up skóre z předchozí hodnoty
+  container.querySelectorAll(".sc").forEach(el=>{
+    const to=+el.dataset.to; const pid=arr[[...container.querySelectorAll(".sc")].indexOf(el)].pid;
+    animateNumber(el, prevScores[pid]||0, to, 800);
+  });
+  // ulož stav pro příští dojezd
+  prevStandings=arr.map(x=>x.pid);
+  prevScores={}; arr.forEach(p=>prevScores[p.pid]=p.score);
+  // rychlý auto-scroll (max 10 s celkem, přeskočitelný)
+  startBoardScroll(container, arr.length);
+}
+
+function startBoardScroll(container,n){
+  cancelBoardScroll();
+  setTimeout(()=>{
+    const max=container.scrollHeight-container.clientHeight;
+    if(max<=4)return;
+    const total=Math.min(10000, 2500+n*350), down=total*0.62, up=total*0.38, hold=900;
+    let t0=null;
+    function frame(t){
+      if(t0===null)t0=t;
+      const e=t-t0; let y;
+      if(e<hold) y=0;
+      else if(e<hold+down) y=max*((e-hold)/down);
+      else if(e<hold+down+up) y=max*(1-((e-hold-down)/up));
+      else { container.scrollTop=0; boardScrollAnim=null; return; }
+      container.scrollTop=y;
+      boardScrollAnim=requestAnimationFrame(frame);
+    }
+    boardScrollAnim=requestAnimationFrame(frame);
+  },1100); // chvíli ukázat špičku, ať doběhne dojezd
+}
+function cancelBoardScroll(){ if(boardScrollAnim){cancelAnimationFrame(boardScrollAnim);boardScrollAnim=null;} }
+
+// osobní žebříček na mobilu: top 3 + ty a okolí
+function renderPersonalBoard(container,players){
+  container.innerHTML="";
+  const medal=["🥇","🥈","🥉"];
+  const arr=Object.entries(players).map(([pid,p])=>({pid,...p,score:p.score||0}));
+  arr.sort((a,b)=>b.score-a.score);
+  const n=arr.length, myIdx=arr.findIndex(x=>x.pid===myPid);
+  const rows=[];
+  if(n<=10){ for(let i=0;i<n;i++) rows.push({idx:i}); }
+  else{
+    for(let i=0;i<3;i++) rows.push({idx:i});
+    let start=Math.max(3,myIdx-3), end=Math.min(n-1,myIdx+3);
+    if(end-start<6){ if(start===3) end=Math.min(n-1,start+6); else start=Math.max(3,end-6); }
+    if(start>3) rows.push({gap:true});
+    for(let i=start;i<=end;i++) rows.push({idx:i});
+  }
+  rows.forEach(r=>{
+    if(r.gap){ const d=document.createElement("div");d.className="row gap";d.innerHTML='<div class="rank">⋯</div>';container.appendChild(d);return; }
+    const p=arr[r.idx], isMe=(p.pid===myPid);
+    const el=document.createElement("div");
+    el.className="row"+(isMe?" me":"")+(r.idx===0?" lead":"");
+    el.innerHTML='<div class="rank">'+(r.idx<3?medal[r.idx]:(r.idx+1)+".")+'</div>'+
+      '<div class="nm"><span class="pdot" style="background:'+(p.color||"#fff")+'"></span>'+(p.avatar||"")+' '+escapeHtml(p.name||"?")+(isMe?" (ty)":"")+'</div>'+
+      '<div class="sc">'+p.score+'</div>';
+    container.appendChild(el);
   });
 }
 
@@ -512,6 +614,7 @@ function hostNext(){
     const i=s.val();
     if(i>=QUESTIONS.length-1){
       // restart
+      prevStandings=[]; prevScores={};
       const updates={};
       Object.keys(hostPlayers).forEach(pid=>updates["players/"+pid+"/score"]=0);
       db.ref("rooms/"+ROOM).update(updates).then(()=>hostShowQuestion(0));
@@ -557,33 +660,68 @@ function startController(){
   });
 }
 
+// barva pro žebříček se dopočítá z emoji (deterministicky)
+function colorForEmoji(e){ let h=0; for(const ch of (e||"?")) h=(h*31+ch.codePointAt(0))>>>0; return AVATAR_COLORS[h%AVATAR_COLORS.length]; }
+
 function buildJoinUI(){
   const eb=$("c-emoji");eb.innerHTML="";
-  AVATARS.forEach((e,i)=>{
-    const b=document.createElement("button");b.className="emoji-opt"+(i===0?" sel":"");b.textContent=e;
-    b.onclick=()=>{myAvatar=e;document.querySelectorAll("#c-emoji .emoji-opt").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");};
+  AVATARS.forEach(e=>{
+    const b=document.createElement("button");b.className="emoji-opt";b.dataset.emoji=e;b.textContent=e;
+    b.onclick=()=>{ if(b.classList.contains("taken"))return; myAvatar=e; myColor=colorForEmoji(e);
+      document.querySelectorAll("#c-emoji .emoji-opt").forEach(x=>x.classList.remove("sel")); b.classList.add("sel"); };
     eb.appendChild(b);
   });
-  const cb=$("c-colors");cb.innerHTML="";
-  AVATAR_COLORS.forEach((c,i)=>{
-    const b=document.createElement("button");b.className="color-opt"+(i===0?" sel":"");b.style.background=c;
-    b.onclick=()=>{myColor=c;document.querySelectorAll("#c-colors .color-opt").forEach(x=>x.classList.remove("sel"));b.classList.add("sel");};
-    cb.appendChild(b);
+  selectFirstFree();
+  // živě hlídej, které obrázky už někdo zabral
+  db.ref("rooms/"+ROOM+"/players").on("value",snap=>{
+    const players=snap.val()||{};
+    const taken=new Set(Object.entries(players).filter(([pid])=>pid!==myPid).map(([,p])=>p.avatar));
+    document.querySelectorAll("#c-emoji .emoji-opt").forEach(b=>{
+      const isTaken=taken.has(b.dataset.emoji);
+      b.classList.toggle("taken",isTaken); b.disabled=isTaken;
+      if(isTaken&&b.classList.contains("sel")){ b.classList.remove("sel"); myAvatar=null; }
+    });
+    if(!myAvatar) selectFirstFree();
   });
+}
+function selectFirstFree(){
+  const opts=[...document.querySelectorAll("#c-emoji .emoji-opt")];
+  const free=opts.find(b=>!b.classList.contains("taken"));
+  opts.forEach(x=>x.classList.remove("sel"));
+  if(free){ free.classList.add("sel"); myAvatar=free.dataset.emoji; myColor=colorForEmoji(myAvatar); }
+  else { myAvatar=null; }
 }
 
 function joinGame(){
   const name=($("c-name").value||"").trim()||"Hráč";
-  myPid=uid();
-  localStorage.setItem("kviz_"+ROOM,myPid);
-  const pref=db.ref("rooms/"+ROOM+"/players/"+myPid);
-  pref.set({name:name,avatar:myAvatar,color:myColor,score:0,connected:true});
-  pref.child("connected").onDisconnect().set(false);
-  $("c-wait-emoji").textContent=myAvatar;
-  attachCtrlListener();
+  if(!myAvatar){ toast("Vyber si obrázek"); return; }
+  // pojistka: ještě jednou ověř, že obrázek není obsazený
+  db.ref("rooms/"+ROOM+"/players").once("value").then(s=>{
+    const players=s.val()||{};
+    if(Object.values(players).some(p=>p.avatar===myAvatar)){ toast("Tenhle obrázek už někdo má, vyber jiný"); return; }
+    db.ref("rooms/"+ROOM+"/players").off();   // odpoj hlídač výběru
+    myPid=uid();
+    localStorage.setItem("kviz_"+ROOM,myPid);
+    const pref=db.ref("rooms/"+ROOM+"/players/"+myPid);
+    pref.set({name:name,avatar:myAvatar,color:myColor,score:0,connected:true});
+    pref.child("connected").onDisconnect().set(false);
+    $("c-wait-emoji").textContent=myAvatar;
+    attachCtrlListener();
+  });
+}
+
+let heartbeatInt=null;
+function startHeartbeat(){
+  if(!myPid||heartbeatInt)return;
+  const ref=db.ref("rooms/"+ROOM+"/players/"+myPid);
+  const beat=()=>ref.update({connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP});
+  beat();
+  heartbeatInt=setInterval(beat,5000);
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden) beat(); });
 }
 
 function attachCtrlListener(){
+  startHeartbeat();
   db.ref("rooms/"+ROOM+"/meta").on("value",snap=>{
     const m=snap.val();if(!m)return;
     ctrlRender(m);
@@ -678,6 +816,7 @@ function renderCtrlResult(m,finished){
       $("c-result-big").innerHTML=(win&&win.pid===myPid)?"👑 Vyhrál jsi!":"Konec hry";
       $("c-result-sub").textContent=pos+". místo z "+arr.length;
       $("c-myscore").textContent=me.score+" b.";
+      renderPersonalBoard($("c-board"),players);
       return;
     }
     const correct=(myAnswer===Q.correct);
@@ -685,6 +824,7 @@ function renderCtrlResult(m,finished){
     $("c-result-big").textContent=correct?"✓ Správně!":(myAnswer===null?"⏱ Nestihl jsi":"✗ Špatně");
     $("c-result-sub").textContent="Správně bylo: "+Q.a[Q.correct]+"  •  "+pos+". místo";
     $("c-myscore").textContent=me.score+" b.";
+    renderPersonalBoard($("c-board"),players);
   });
 }
 </script>
