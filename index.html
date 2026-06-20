@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kvíz Párty</title>
+
+<!-- ===== Firebase (Realtime Database) ===== -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<!-- ===== QR kód ===== -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@500;700;900&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   NASTAVENÍ VZHLEDU
+   ============================================================ */
+:root{
+  --bg1:#160a36; --bg2:#3a0d63; --bg3:#0b0420;
+  --ink:#f6f1ff; --muted:#b9a9e0;
+  --gold:#ffd23f;
+  --c0:#2f6bff;  /* modrá */
+  --c1:#ff7a1a;  /* oranžová */
+  --c2:#1ed760;  /* zelená */
+  --c3:#ff3da6;  /* růžová */
+  --panel:rgba(255,255,255,.07);
+  --panel-bd:rgba(255,255,255,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:'Inter',sans-serif;
+  color:var(--ink);
+  background:radial-gradient(120% 120% at 50% 0%,var(--bg2) 0%,var(--bg1) 45%,var(--bg3) 100%);
+  background-attachment:fixed;
+  overflow-x:hidden;
+  min-height:100dvh;
+}
+.wrap{min-height:100dvh;display:flex;flex-direction:column;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom))}
+.display{font-family:'Baloo 2',sans-serif;font-weight:700;line-height:1.02}
+.hidden{display:none !important}
+button{font-family:inherit;cursor:pointer;border:none;color:inherit}
+.btn{
+  font-family:'Baloo 2',sans-serif;font-weight:600;font-size:clamp(18px,5vw,24px);
+  background:var(--gold);color:#2a1500;border-radius:18px;padding:18px 28px;
+  box-shadow:0 8px 0 #b8860b, 0 14px 24px rgba(0,0,0,.35);
+  transition:transform .08s, box-shadow .08s; width:100%;
+}
+.btn:active{transform:translateY(6px);box-shadow:0 2px 0 #b8860b,0 6px 12px rgba(0,0,0,.35)}
+.btn.ghost{background:var(--panel);color:var(--ink);box-shadow:0 6px 0 rgba(0,0,0,.25);border:1px solid var(--panel-bd)}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:22px}
+.eyebrow{font-family:'Baloo 2';letter-spacing:.18em;text-transform:uppercase;color:var(--gold);font-size:13px;font-weight:600}
+.card{background:var(--panel);border:1px solid var(--panel-bd);border-radius:24px;padding:24px;backdrop-filter:blur(6px)}
+
+/* ---------- LANDING ---------- */
+.logo{font-size:clamp(48px,14vw,120px);text-shadow:0 6px 0 rgba(0,0,0,.35)}
+.logo .a{color:var(--c0)}.logo .b{color:var(--c1)}.logo .c{color:var(--c2)}.logo .d{color:var(--c3)}
+
+/* ---------- LOBBY (TV) ---------- */
+.code{font-family:'Baloo 2';font-weight:700;font-size:clamp(56px,12vw,140px);letter-spacing:.08em;color:var(--gold);text-shadow:0 6px 0 rgba(0,0,0,.3)}
+#qrbox{background:#fff;padding:16px;border-radius:20px;line-height:0}
+.players{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:1100px}
+.pchip{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--panel-bd);border-radius:999px;padding:10px 18px;font-weight:700;font-size:clamp(16px,2.4vw,22px);animation:pop .35s}
+.pchip.offline{opacity:.4}
+.pdot{width:14px;height:14px;border-radius:50%;background:#6b7280;flex:0 0 auto}
+.pdot.on{background:#1ed760}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* ---------- OTÁZKA ---------- */
+.qhead{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%}
+.qcount{font-family:'Baloo 2';color:var(--muted);font-weight:600;font-size:clamp(14px,2.5vw,20px)}
+.timer{font-family:'Baloo 2';font-weight:700;font-size:clamp(34px,7vw,64px);color:var(--gold);min-width:1.6em;text-align:center}
+.qtext{font-family:'Baloo 2';font-weight:700;font-size:clamp(26px,5.5vw,60px);line-height:1.1;max-width:1100px;margin:8px auto}
+.qmedia{max-width:min(80vw,560px);max-height:42dvh;border-radius:18px;margin:6px auto;display:block}
+
+/* mřížka odpovědí */
+.answers{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%;max-width:1100px;margin:0 auto}
+.ans{
+  display:flex;align-items:center;gap:14px;text-align:left;
+  border-radius:20px;padding:20px;font-family:'Baloo 2';font-weight:600;
+  font-size:clamp(18px,3.2vw,30px);color:#fff;min-height:84px;
+  box-shadow:0 8px 0 rgba(0,0,0,.3),0 12px 22px rgba(0,0,0,.3);
+  transition:transform .1s, box-shadow .1s, opacity .25s, filter .25s;
+}
+.ans .shape{font-size:1.3em;line-height:1;flex:0 0 auto}
+.ans.c0{background:var(--c0)} .ans.c1{background:var(--c1)}
+.ans.c2{background:var(--c2)} .ans.c3{background:var(--c3)}
+.ans.dim{opacity:.28;filter:saturate(.4)}
+.ans.win{animation:winpulse .7s infinite alternate;outline:5px solid #fff}
+@keyframes winpulse{from{transform:scale(1)}to{transform:scale(1.04)}}
+
+/* ovladač – velká buzz tlačítka */
+.buzzgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1;width:100%}
+.buzz{border-radius:24px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;
+  font-family:'Baloo 2';font-weight:600;font-size:clamp(17px,5vw,26px);color:#fff;padding:14px;text-align:center;
+  box-shadow:0 10px 0 rgba(0,0,0,.32),0 16px 26px rgba(0,0,0,.32);transition:transform .08s,box-shadow .08s,opacity .2s}
+.buzz .shape{font-size:2.4em;line-height:1}
+.buzz:active{transform:translateY(8px);box-shadow:0 2px 0 rgba(0,0,0,.32)}
+.buzz.c0{background:var(--c0)}.buzz.c1{background:var(--c1)}.buzz.c2{background:var(--c2)}.buzz.c3{background:var(--c3)}
+.buzz:disabled{opacity:.35;filter:saturate(.4)}
+
+/* ---------- ŽEBŘÍČEK ---------- */
+.board{display:flex;flex-direction:column;gap:10px;width:100%;max-width:760px;margin:0 auto;max-height:62dvh;overflow-y:auto;scrollbar-width:none}
+.board::-webkit-scrollbar{display:none}
+.row{display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--panel-bd);border-radius:16px;padding:14px 18px;animation:slidein .4s;flex:0 0 auto}
+.row .rank{font-family:'Baloo 2';font-weight:700;font-size:24px;color:var(--gold);width:44px;text-align:center}
+.row .nm{font-weight:700;font-size:clamp(18px,3vw,24px);flex:1;display:flex;align-items:center;gap:10px}
+.row .sc{font-family:'Baloo 2';font-weight:700;font-size:clamp(20px,3.4vw,28px)}
+.row.lead{outline:2px solid var(--gold);background:rgba(255,210,63,.12)}
+.row.me{outline:3px solid #fff;background:rgba(255,255,255,.14)}
+.row.gap{justify-content:center;padding:6px;opacity:.6;animation:none}
+.row.gap .rank{width:auto;color:var(--muted);letter-spacing:.2em}
+.row.offline{opacity:.45}
+@keyframes slidein{from{transform:translateX(-30px);opacity:0}to{transform:none;opacity:1}}
+
+/* ovladač – stavové hlášky */
+.statusbig{font-family:'Baloo 2';font-weight:700;font-size:clamp(30px,9vw,56px)}
+.result-ok{color:var(--c2)} .result-no{color:var(--c3)}
+.myscore{font-family:'Baloo 2';font-weight:700;font-size:clamp(40px,12vw,70px);color:var(--gold)}
+
+/* výběr avatara */
+.grid-emoji{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;max-height:34dvh;overflow-y:auto;padding:2px}
+.emoji-opt{font-size:26px;background:var(--panel);border:2px solid transparent;border-radius:12px;padding:8px;aspect-ratio:1;display:flex;align-items:center;justify-content:center}
+.emoji-opt.sel{border-color:var(--gold);background:rgba(255,210,63,.15)}
+.emoji-opt.taken{opacity:.22;filter:grayscale(1);cursor:not-allowed;position:relative}
+.emoji-opt:disabled{cursor:not-allowed}
+input.txt{width:100%;font-family:'Baloo 2';font-size:22px;padding:16px;border-radius:16px;background:rgba(0,0,0,.25);border:2px solid var(--panel-bd);color:var(--ink);text-align:center}
+input.txt:focus{outline:none;border-color:var(--gold)}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#000a;border:1px solid var(--panel-bd);padding:12px 20px;border-radius:999px;font-weight:700}
+@media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+
+<!-- ============ LANDING ============ -->
+<div id="screen-landing" class="wrap">
+  <div class="center">
+    <div class="eyebrow">párty kvíz</div>
+    <div class="logo display"><span class="a">K</span><span class="b">V</span><span class="c">Í</span><span class="d">Z</span></div>
+    <p style="color:var(--muted);max-width:420px">Spusť hru na velké obrazovce. Kamarádi se připojí naskenováním QR kódu telefonem.</p>
+    <div style="display:flex;flex-direction:column;gap:14px;width:min(420px,90vw)">
+      <button class="btn" onclick="becomeHost()">▶ Spustit hru na TV</button>
+      <p style="color:var(--muted);font-size:14px">Hraješ na telefonu? Naskenuj QR od hostitele.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HOST (TV) ============ -->
+<div id="screen-host" class="wrap hidden">
+
+  <!-- LOBBY -->
+  <div id="host-lobby" class="center">
+    <div class="eyebrow">připoj se telefonem</div>
+    <div id="qrbox"></div>
+    <div>
+      <div style="color:var(--muted);font-size:14px;text-align:center">nebo zadej kód na adrese hry</div>
+      <div id="roomcode" class="code">····</div>
+    </div>
+    <div id="lobby-players" class="players"></div>
+    <button id="startbtn" class="btn" style="width:min(420px,90vw)" onclick="startGame()" disabled>Start (čeká na hráče…)</button>
+  </div>
+
+  <!-- OTÁZKA / REVEAL -->
+  <div id="host-question" class="center hidden">
+    <div class="qhead">
+      <div class="qcount" id="h-qcount"></div>
+      <div class="timer" id="h-timer"></div>
+    </div>
+    <div class="qtext display" id="h-qtext"></div>
+    <img id="h-media" class="qmedia hidden" alt="">
+    <div class="answers" id="h-answers"></div>
+    <div id="h-reveal-msg" class="statusbig hidden" style="margin-top:6px"></div>
+    <button id="h-next" class="btn hidden" style="width:min(420px,90vw)" onclick="hostNext()">Další otázka →</button>
+  </div>
+
+  <!-- ŽEBŘÍČEK / KONEC -->
+  <div id="host-board" class="center hidden">
+    <div class="display" id="b-title" style="font-size:clamp(26px,5.5vw,46px);color:var(--gold)">průběžné pořadí</div>
+    <div class="board" id="b-board"></div>
+    <div id="b-fact" class="hidden" style="max-width:760px;color:var(--ink);background:rgba(255,210,63,.12);border:1px solid rgba(255,210,63,.35);border-radius:14px;padding:12px 18px;font-weight:600;font-size:clamp(15px,2.6vw,20px)"></div>
+    <button id="b-continue" class="btn" style="width:min(420px,90vw)" onclick="hostNext()">Další otázka →</button>
+  </div>
+</div>
+
+<!-- ============ OVLADAČ (TELEFON) ============ -->
+<div id="screen-ctrl" class="wrap hidden">
+
+  <!-- PŘIPOJENÍ -->
+  <div id="ctrl-join" class="center">
+    <div class="eyebrow">tvoje postava</div>
+    <div class="card" style="width:min(420px,92vw);max-height:88dvh;overflow-y:auto;display:flex;flex-direction:column;gap:16px">
+      <input id="c-name" class="txt" maxlength="12" placeholder="Tvoje jméno">
+      <div class="grid-emoji" id="c-emoji"></div>
+      <button class="btn" onclick="joinGame()">Připojit se</button>
+    </div>
+  </div>
+
+  <!-- ČEKÁNÍ -->
+  <div id="ctrl-wait" class="center hidden">
+    <div class="statusbig display" id="c-wait-emoji">🎮</div>
+    <div class="statusbig display">Připraveno!</div>
+    <p style="color:var(--muted)">Sleduj velkou obrazovku. Hra začne za chvíli.</p>
+  </div>
+
+  <!-- BUZZ -->
+  <div id="ctrl-buzz" style="flex:1;display:flex;flex-direction:column;gap:12px;width:100%">
+    <div class="qhead">
+      <div class="qcount" id="c-rank"></div>
+      <div class="timer" id="c-timer"></div>
+    </div>
+    <div class="qtext display" id="c-qtext" style="font-size:clamp(18px,5.5vw,26px);margin:0"></div>
+    <div class="buzzgrid" id="c-buzz"></div>
+  </div>
+
+  <!-- ZAMČENO / VÝSLEDEK -->
+  <div id="ctrl-result" class="center hidden" style="overflow-y:auto;gap:14px;justify-content:flex-start;padding-top:18px">
+    <div id="c-result-big" class="statusbig display"></div>
+    <div id="c-result-sub" style="color:var(--muted)"></div>
+    <div class="myscore" id="c-myscore"></div>
+    <div class="board" id="c-board" style="max-height:46dvh"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+/* ============================================================
+   1) FIREBASE KONFIGURACE  (tvoje – už vyplněno)
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBnCzlECYray96jL-6JY4nG9s5k8y-IWuQ",
+  authDomain: "kviz-f5b92.firebaseapp.com",
+  databaseURL: "https://kviz-f5b92-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "kviz-f5b92",
+  storageBucket: "kviz-f5b92.firebasestorage.app",
+  messagingSenderId: "308650540624",
+  appId: "1:308650540624:web:d9dbbc2c446b4cc6f1db55"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ============================================================
+   2) NASTAVENÍ HRY
+   ============================================================ */
+const SETTINGS = {
+  questionsPerGame: 30,  // kolik otázek se náhodně vybere z celé sady do jedné hry
+  answerSeconds: 10,     // kolik vteřin mají hráči na odpověď
+  pointsPerCorrect: 1,   // body za správnou odpověď
+  readAloud: true,       // TV čte otázky nahlas (jen TV)
+  speechRate: 1.0        // rychlost čtení (1.0 = přirozené lidské tempo)
+};
+
+/* ============================================================
+   3) OTÁZKY  — tady je můžeš upravovat / přidávat
+   ------------------------------------------------------------
+   - "q"       : text otázky
+   - "a"       : čtyři odpovědi (pořadí = modrá, oranžová, zelená, růžová)
+   - "correct" : index správné (0=modrá, 1=oranžová, 2=zelená, 3=růžová)
+   - "img"     : (nepovinné) obrázek, ukáže se JEN na TV, např. "media/auto.jpg"
+   - "fact"    : (nepovinné) zajímavost, kterou TV po vyhodnocení otázky řekne nahlas a zobrazí
+   ============================================================ */
+const QUESTIONS = [
+  /* ---------- SVĚT (geografie, příroda) ---------- */
+  { q:"Která země má nejvíc časových pásem?", a:["Rusko","USA","Francie","Čína"], correct:2, fact:"Francie má díky zámořským územím celkem 12 časových pásem.", t:"Svět" },
+  { q:"Nejhlubší oceán na Zemi?", a:["Atlantský","Indický","Tichý","Severní ledový"], correct:2, fact:"Mariánský příkop v Tichém oceánu sahá přes 10 km pod hladinu.", t:"Svět" },
+  { q:"Nejbližší hvězda k Zemi kromě Slunce?", a:["Sirius","Proxima Centauri","Alfa Centauri A","Betelgeuse"], correct:1, fact:"Proxima Centauri je vzdálená asi 4,2 světelného roku.", t:"Svět" },
+  { q:"Hlavní město Austrálie?", a:["Sydney","Melbourne","Canberra","Perth"], correct:2, fact:"Canberra vznikla jako kompromis mezi rivaly Sydney a Melbourne.", t:"Svět" },
+  { q:"Nejmenší stát světa?", a:["Monako","San Marino","Vatikán","Lichtenštejnsko"], correct:2, fact:"Vatikán má rozlohu necelého půl kilometru čtverečního.", t:"Svět" },
+  { q:"Kdo jako první výpravou obeplul zeměkouli?", a:["Kolumbus","Magalhães","Vasco da Gama","Cook"], correct:1, fact:"Magalhães sám zemřel na Filipínách, cestu dokončil Elcano.", t:"Svět" },
+  { q:"V jaké dynastii vznikla většina dnešní Velké čínské zdi?", a:["Chan","Tchang","Ming","Čching"], correct:2, t:"Svět" },
+  { q:"Kolik srdcí má chobotnice?", a:["1","2","3","4"], correct:2, fact:"Dvě srdce pohánějí krev žábrami, třetí ji rozvádí po těle.", t:"Svět" },
+  { q:"Která řeka má největší průtok (objem vody) na světě?", a:["Nil","Amazonka","Mississippi","Jang-c'-ťiang"], correct:1, fact:"Amazonka vynese do oceánu víc vody než dalších osm největších řek světa dohromady.", t:"Svět" },
+  { q:"Hlavní město Kanady?", a:["Toronto","Vancouver","Ottawa","Montreal"], correct:2, t:"Svět" },
+  { q:"Nejdelší řeka světa?", a:["Amazonka","Nil","Mississippi","Jang-c'-ťiang"], correct:1, fact:"Klasicky se uvádí Nil, asi 6650 km dlouhý.", t:"Svět" },
+  { q:"Nejvyšší hora světa?", a:["K2","Mount Everest","Lhoce","Makalu"], correct:1, fact:"Everest měří 8849 metrů nad mořem.", t:"Svět" },
+  { q:"Která poušť je největší (horká)?", a:["Gobi","Sahara","Kalahari","Atacama"], correct:1, fact:"Sahara má rozlohu zhruba jako celé USA.", t:"Svět" },
+  { q:"Nejlidnatější země světa?", a:["Čína","Indie","USA","Indonésie"], correct:1, fact:"Indie kolem roku 2023 předstihla Čínu.", t:"Svět" },
+  { q:"Který kontinent je nejméně osídlený?", a:["Austrálie","Antarktida","Afrika","Asie"], correct:1, fact:"Antarktidu obývají jen vědci na stanicích.", t:"Svět" },
+  { q:"Která planeta má nejvíc měsíců?", a:["Mars","Jupiter","Saturn","Země"], correct:2, fact:"Saturn má potvrzených přes 140 měsíců.", t:"Svět" },
+  { q:"Nejdelší pohoří světa na souši?", a:["Himálaj","Andy","Skalnaté hory","Alpy"], correct:1, fact:"Andy se táhnou přes 7000 km podél Jižní Ameriky.", t:"Svět" },
+  { q:"Co měří Richterova škála?", a:["Teplotu","Sílu zemětřesení","Vítr","Vlhkost"], correct:1, t:"Svět" },
+  { q:"Která země leží na nejvíce kontinentech?", a:["Rusko","Egypt","Turecko","Všechny předchozí"], correct:3, fact:"Rusko, Egypt i Turecko leží na dvou kontinentech.", t:"Svět" },
+  { q:"Největší ostrov světa?", a:["Madagaskar","Grónsko","Borneo","Nová Guinea"], correct:1, fact:"Grónsko má přes 2 miliony km², přesto patří Dánsku.", t:"Svět" },
+  { q:"Mezi kterými dvěma zeměmi vede nejdelší nepřerušená pozemní hranice na světě?", a:["USA a Kanada","Rusko a Kazachstán","Čína a Mongolsko","Argentina a Chile"], correct:0, fact:"Hranice mezi USA a Kanadou měří přes 8 800 km.", t:"Svět" },
+  { q:"Které moře je nejslanější (klasicky uváděné)?", a:["Černé","Mrtvé moře","Baltské","Středozemní"], correct:1, fact:"V Mrtvém moři se díky soli nepotopíte.", t:"Svět" },
+  { q:"Která země má na světě nejvíc aktivních sopek?", a:["Japonsko","Indonésie","USA","Island"], correct:1, fact:"Indonésie leží v tzv. Ohnivém kruhu Tichého oceánu.", t:"Svět" },
+  { q:"Který průliv odděluje Asii od Severní Ameriky?", a:["Gibraltarský","Beringův","Hormuzský","Malacký"], correct:1, fact:"V zimě bývá tak úzký a mělký, že po něm kdysi procházeli lidé pěšky.", t:"Svět" },
+  { q:"Z čeho je tvořen hlavní díl zemské atmosféry?", a:["Kyslík","Dusík","Oxid uhličitý","Vodík"], correct:1, fact:"Dusík tvoří asi 78 % vzduchu.", t:"Svět" },
+  { q:"Které zvíře je největší žijící plaz?", a:["Anakonda","Krokodýl mořský","Komodský varan","Želva"], correct:1, fact:"Krokodýl mořský může měřit přes 6 metrů.", t:"Svět" },
+  { q:"Hlavní město Brazílie?", a:["Rio de Janeiro","São Paulo","Brasília","Salvador"], correct:2, fact:"Brasília byla postavena na zelené louce a otevřena 1960.", t:"Svět" },
+  { q:"Která řeka protéká Londýnem?", a:["Seina","Temže","Rýn","Dunaj"], correct:1, t:"Svět" },
+  { q:"Nejvyšší vodopád světa?", a:["Niagara","Viktoriiny vodopády","Salto Ángel","Iguazú"], correct:2, fact:"Salto Ángel ve Venezuele padá z výšky téměř kilometr.", t:"Svět" },
+  { q:"Která africká řeka neobvykle teče od jihu na sever?", a:["Kongo","Niger","Nil","Zambezi"], correct:2, fact:"Nil pramení u rovníku a ústí do Středozemního moře na severu.", t:"Svět" },
+
+  /* ---------- HISTORIE & VĚDA ---------- */
+  { q:"Ve kterém roce padla Berlínská zeď?", a:["1987","1989","1991","1993"], correct:1, fact:"Pád 9. listopadu 1989 odstartoval konec komunismu ve střední Evropě.", t:"Historie" },
+  { q:"Jak se jmenuje proces, kdy rostliny vyrábí kyslík ze světla?", a:["Respirace","Fotosyntéza","Fermentace","Oxidace"], correct:1, t:"Historie" },
+  { q:"Kolik kostí má dospělý člověk?", a:["186","206","226","246"], correct:1, fact:"Novorozenec má kolem 270 kostí, některé pak srostou.", t:"Historie" },
+  { q:"Kdo namaloval Monu Lisu?", a:["Michelangelo","Leonardo da Vinci","Raffael","Botticelli"], correct:1, fact:"Obraz visí v pařížském Louvru za neprůstřelným sklem.", t:"Historie" },
+  { q:"V kterém roce se Karel IV. stal českým králem?", a:["1346","1378","1306","1419"], correct:0, fact:"Karel IV. se stal i římským císařem.", t:"Historie" },
+  { q:"Za co přesně dostal Albert Einstein Nobelovu cenu za fyziku?", a:["Teorie relativity","Fotoelektrický jev","Brownův pohyb","Kvantová mechanika"], correct:1, fact:"Nobelovu cenu dostal v roce 1921 za vysvětlení fotoelektrického jevu, ne za relativitu.", t:"Historie" },
+  { q:"Ve kterém roce skončila druhá světová válka?", a:["1943","1944","1945","1946"], correct:2, t:"Historie" },
+  { q:"Kdo objevil penicilin?", a:["Pasteur","Fleming","Koch","Curie"], correct:1, fact:"Fleming si všiml plísně, která zabíjela bakterie, v roce 1928.", t:"Historie" },
+  { q:"Která civilizace postavila pyramidy v Gíze?", a:["Římané","Egypťané","Mayové","Řekové"], correct:1, t:"Historie" },
+  { q:"Jaký prvek má značku „Au“?", a:["Stříbro","Hliník","Zlato","Měď"], correct:2, fact:"Au je zkratka z latinského aurum.", t:"Historie" },
+  { q:"Kdo vyslovil teorii evoluce přírodním výběrem?", a:["Mendel","Darwin","Lamarck","Linné"], correct:1, fact:"Darwin ji shrnul v knize O původu druhů (1859).", t:"Historie" },
+  { q:"Která planeta byla v roce 2006 přeřazena na trpasličí?", a:["Mars","Pluto","Merkur","Neptun"], correct:1, t:"Historie" },
+  { q:"Která mise jako první úspěšně přistála na odvrácené straně Měsíce?", a:["Apollo 11","Luna 9","Čchang-e 4","Surveyor 1"], correct:2, fact:"Čínská sonda Čchang-e 4 tam přistála v lednu 2019.", t:"Historie" },
+  { q:"Kolik je rychlost světla (přibližně)?", a:["3 tisíce km/s","30 tisíc km/s","300 tisíc km/s","3 miliony km/s"], correct:2, fact:"Světlo urazí téměř 300 000 km za jedinou vteřinu.", t:"Historie" },
+  { q:"Který vědec stojí za zákony pohybu a gravitace?", a:["Galileo","Newton","Kepler","Hawking"], correct:1, t:"Historie" },
+  { q:"Jak se jmenuje nejmenší částice prvku, která si zachovává jeho vlastnosti?", a:["Molekula","Atom","Buňka","Ion"], correct:1, t:"Historie" },
+  { q:"Která kapalina je za pokojové teploty kovem?", a:["Voda","Rtuť","Líh","Olej"], correct:1, t:"Historie" },
+  { q:"Kdo napsal teorii o pohybu planet kolem Slunce v 16. století?", a:["Koperník","Ptolemaios","Brahe","Newton"], correct:0, fact:"Koperník tvrdil, že středem je Slunce, ne Země.", t:"Historie" },
+  { q:"Kdo společně s Watsonem popsal strukturu dvoušroubovice DNA, ačkoli klíčová rentgenová data poskytla bez patřičného uznání Rosalind Franklinová?", a:["Crick","Mendel","Pasteur","Darwin"], correct:0, fact:"Crick a Watson za to v roce 1962 dostali Nobelovu cenu.", t:"Historie" },
+  { q:"Která éra předcházela dinosaury jako vládce souše?", a:["Doba ledová","Prvohory","Středověk","Novověk"], correct:1, t:"Historie" },
+  { q:"Kdo objevil Ameriku pro Evropu v roce 1492?", a:["Magalhães","Kolumbus","Vespucci","Cook"], correct:1, t:"Historie" },
+  { q:"Která sloučenina vzniká reakcí kyseliny s hydroxidem (neutralizací)?", a:["Oxid","Sůl a voda","Čistá kyselina","Plyn"], correct:1, t:"Historie" },
+  { q:"Která žena dvakrát získala Nobelovu cenu?", a:["Rosalind Franklin","Marie Curie-Skłodowská","Ada Lovelace","Lise Meitner"], correct:1, fact:"Marie Curie ji získala za fyziku i chemii.", t:"Historie" },
+  { q:"Ve kterém století probíhala průmyslová revoluce v Anglii?", a:["16.","17.","18.–19.","20."], correct:2, t:"Historie" },
+  { q:"Kdo byl prvním člověkem ve vesmíru?", a:["Armstrong","Gagarin","Glenn","Tereškovová"], correct:1, fact:"Jurij Gagarin obletěl Zemi v roce 1961.", t:"Historie" },
+  { q:"Co měří jednotka volt?", a:["Proud","Napětí","Odpor","Výkon"], correct:1, t:"Historie" },
+  { q:"Která starověká stavba patří mezi sedm divů a stojí dodnes?", a:["Maják v Alexandrii","Velká pyramida v Gíze","Koloss rhodský","Visuté zahrady"], correct:1, t:"Historie" },
+  { q:"Jak se jmenuje galaxie, ve které žijeme?", a:["Andromeda","Mléčná dráha","Sombrero","Trojúhelník"], correct:1, t:"Historie" },
+  { q:"Který vynálezce je spojen se sériovou výrobou žárovky, ačkoli princip žhaveného vlákna popsal už dřív Brit Joseph Swan?", a:["Edison","Tesla","Faraday","Volta"], correct:0, fact:"Edison a Swan nakonec spojili své patenty do společné firmy.", t:"Historie" },
+  { q:"Která éra je známá jako „doba kamenná“ na svém začátku?", a:["Paleolit","Antika","Středověk","Renesance"], correct:0, t:"Historie" },
+
+  /* ---------- ČESKO ---------- */
+  { q:"Kdo byl prvním československým prezidentem?", a:["Edvard Beneš","T. G. Masaryk","Václav Havel","A. Zápotocký"], correct:1, fact:"Masaryk byl prezidentem od roku 1918 do roku 1935.", t:"Česko" },
+  { q:"Které město je sídlem Ústavního soudu ČR?", a:["Praha","Brno","Ostrava","Olomouc"], correct:1, t:"Česko" },
+  { q:"Nejdelší řeka pramenící celá v Česku?", a:["Vltava","Labe","Morava","Sázava"], correct:0, fact:"Vltava měří asi 430 km.", t:"Česko" },
+  { q:"Který Čech vynalezl kontaktní čočky?", a:["Otto Wichterle","J. Heyrovský","F. Křižík","Emil Škoda"], correct:0, fact:"Wichterle je vyrobil doma o Vánocích 1961.", t:"Česko" },
+  { q:"Který český král nechal v roce 1348 založit pražské Nové Město?", a:["Václav IV.","Karel IV.","Jan Lucemburský","Přemysl Otakar II."], correct:1, fact:"Nové Město bylo tehdy jedno z největších urbanistických počinů v Evropě.", t:"Česko" },
+  { q:"Nejvyšší hora Česka?", a:["Praděd","Sněžka","Lysá hora","Radhošť"], correct:1, fact:"Sněžka měří 1603 metrů a leží v Krkonoších.", t:"Česko" },
+  { q:"Ve kterém roce zavedlo Československo korunu jako vlastní měnu po odtržení od rakousko-uherské měnové unie?", a:["1918","1919","1921","1929"], correct:1, fact:"Stalo se tak tzv. okolkováním bankovek pod vedením Aloise Rašína.", t:"Česko" },
+  { q:"Kdo napsal Babičku?", a:["K. H. Mácha","Božena Němcová","Jan Neruda","Karel Čapek"], correct:1, fact:"Boženu Němcovou najdeš na pětistovce.", t:"Česko" },
+  { q:"Které slovo dal světu Karel Čapek?", a:["Auto","Robot","Tunel","Mobil"], correct:1, fact:"Slovo robot poprvé zaznělo v jeho hře R.U.R.", t:"Česko" },
+  { q:"Kolik krajů má Česko?", a:["8","12","14","16"], correct:2, fact:"Včetně Prahy je krajů 14.", t:"Česko" },
+  { q:"Kde stojí hrad Karlštejn?", a:["U Brna","U Prahy","U Plzně","U Ostravy"], correct:1, fact:"Nechal ho postavit Karel IV. pro korunovační klenoty.", t:"Česko" },
+  { q:"Jak se jmenuje nejstarší kamenný most v Praze?", a:["Most Legií","Karlův most","Mánesův most","Čechův most"], correct:1, t:"Česko" },
+  { q:"Které pražské nádraží neslo v minulosti název Wilsonovo?", a:["Masarykovo","Hlavní nádraží","Smíchovské","Holešovice"], correct:1, fact:"Pojmenováno bylo po americkém prezidentovi Woodrow Wilsonovi.", t:"Česko" },
+  { q:"Které pohoří odděluje Česko od Polska na severu?", a:["Šumava","Krkonoše","Beskydy","Jeseníky"], correct:1, t:"Česko" },
+  { q:"Kdo byl posledním československým a prvním českým prezidentem?", a:["Havel","Klaus","Zeman","Beneš"], correct:0, t:"Česko" },
+  { q:"Jaký nápoj proslavil Plzeň?", a:["Víno","Pivo Pilsner Urquell","Slivovice","Becherovka"], correct:1, fact:"Plzeň dala jméno stylu piva pils.", t:"Česko" },
+  { q:"Jak se jmenuje nejnižší bod Česka (u Hřenska)?", a:["Labe","Vltava","Dyje","Odra"], correct:0, fact:"Hladina Labe u Hřenska leží jen asi 115 m n. m.", t:"Česko" },
+  { q:"Která značka aut se vyrábí v Mladé Boleslavi?", a:["Tatra","Škoda","Praga","Aero"], correct:1, t:"Česko" },
+  { q:"Kdo složil operu Prodaná nevěsta?", a:["Dvořák","Smetana","Janáček","Mahler"], correct:1, t:"Česko" },
+  { q:"Které moravské město je proslulé zámkem rodu Lichtenštejnů zapsaným na seznamu UNESCO?", a:["Lednice","Brno","Olomouc","Mikulov"], correct:0, fact:"Areál Lednice–Valtice je jedním z největších komponovaných krajin v Evropě.", t:"Česko" },
+  { q:"Které město je známé lázněmi a Becherovkou?", a:["Mariánské Lázně","Karlovy Vary","Teplice","Luhačovice"], correct:1, t:"Česko" },
+  { q:"Jak se nazývá tradiční kynutý houskový knedlík servírovaný k vepřo-knedlo-zelo?", a:["Bramborák","Houskový knedlík","Lokše","Halušky"], correct:1, t:"Česko" },
+  { q:"Který český hokejista vstoupil do Síně slávy NHL jako legenda?", a:["Hašek","Nedvěd","Reichel","Ručinský"], correct:0, fact:"Dominik Hašek patří k nejlepším brankářům historie.", t:"Česko" },
+  { q:"Jak se jmenuje nejznámější české pohádkové strašidlo z vody?", a:["Bludička","Vodník","Rarach","Klekánice"], correct:1, t:"Česko" },
+  { q:"Které město leží na soutoku Labe a Vltavy?", a:["Mělník","Kolín","Litoměřice","Děčín"], correct:0, t:"Česko" },
+  { q:"Který strom je tradičně považován za český národní strom?", a:["Dub","Lípa","Buk","Bříza"], correct:1, fact:"Lípa je národním stromem Čechů i Slovanů obecně.", t:"Česko" },
+  { q:"Které jihočeské město proslulo rybníkářstvím?", a:["Tábor","Třeboň","Písek","Jindřichův Hradec"], correct:1, t:"Česko" },
+  { q:"Kdo je autorem Slovanské epopeje?", a:["Mucha","Aleš","Švabinský","Lada"], correct:0, fact:"Alfons Mucha na cyklu pracoval téměř 20 let.", t:"Česko" },
+  { q:"Jak se jmenuje nejvyšší rozhledna v Česku, věž na vrchu?", a:["Petřín","Ještěd","Praděd vysílač","Žižkov"], correct:3, fact:"Žižkovský vysílač měří přes 200 metrů.", t:"Česko" },
+  { q:"Národní divadlo v Praze vyhořelo krátce po dokončení v roce 1881. Kdy bylo po rychlé sbírce a opravě znovu otevřeno?", a:["1882","1883","1890","1900"], correct:1, fact:"Na opravu vybrala veřejnost obrovskou částku během necelých dvou let.", t:"Česko" },
+
+  /* ---------- LIBEREC ---------- */
+  { q:"Jak se jmenuje vysílač a hotel na hoře nad Libercem?", a:["Petřín","Ještěd","Sněžka","Cvilín"], correct:1, fact:"Stavba architekta Karla Hubáčka získala cenu Perret Award.", t:"Liberec" },
+  { q:"Jak se jmenuje liberecký hokejový klub?", a:["Sparta","Bílí Tygři","Kometa","Mountfield"], correct:1, fact:"Bílí Tygři hrají nejvyšší soutěž od sezony 2000/2001.", t:"Liberec" },
+  { q:"Které zařízení v Liberci je nejstarší svého druhu v Česku?", a:["Planetárium","ZOO Liberec","Aquapark","Hvězdárna"], correct:1, fact:"ZOO Liberec byla založena už v roce 1904.", t:"Liberec" },
+  { q:"Jak se jmenuje zábavní centrum s tropickou halou v Liberci?", a:["Fórum","Babylon","Plaza","Nisa"], correct:1, fact:"Součástí Babylonu je hala s vodopádem a ptáky.", t:"Liberec" },
+  { q:"Která řeka protéká Libercem?", a:["Jizera","Nisa","Ploučnice","Smědá"], correct:1, fact:"Lužická Nisa pokračuje do Polska a Německa.", t:"Liberec" },
+  { q:"Jak se jmenuje vysoká škola v Liberci?", a:["ČVUT","Technická univerzita v Liberci","VUT","VŠB"], correct:1, fact:"TUL vznikla v roce 1953 jako Vysoká škola strojní.", t:"Liberec" },
+  { q:"V jaké přibližné nadmořské výšce leží centrum Liberce?", a:["Kolem 100 m","Kolem 250 m","Kolem 400 m","Kolem 700 m"], correct:2, fact:"Liberec leží v kotlině obklopené vrcholy přes 1000 m n. m.", t:"Liberec" },
+  { q:"Slavný konstruktér aut Ferdinand Porsche se narodil v které části Liberce?", a:["Rochlice","Vratislavice nad Nisou","Ruprechtice","Hanychov"], correct:1, fact:"Ve Vratislavicích nad Nisou (tehdy Maffersdorf) v roce 1875.", t:"Liberec" },
+  { q:"Jak je vysoký vrchol Ještědu?", a:["812 m","1012 m","1212 m","612 m"], correct:1, fact:"Ještěd měří 1012 metrů nad mořem.", t:"Liberec" },
+  { q:"Jak se jmenuje přehrada přímo v Liberci?", a:["Souš","Harcov","Josefův Důl","Bedřichov"], correct:1, fact:"Přehrada Harcov vznikla po ničivé povodni roku 1897.", t:"Liberec" },
+  { q:"Které muzeum sídlí v Liberci v secesní budově?", a:["Národní","Severočeské","Technické","Uměleckoprůmyslové"], correct:1, t:"Liberec" },
+  { q:"Po kom je pojmenováno hlavní liberecké divadlo?", a:["Tyl","F. X. Šalda","Mahen","Klicpera"], correct:1, t:"Liberec" },
+  { q:"V jakém slohu je postavena liberecká radnice?", a:["Baroko","Novorenesance","Funkcionalismus","Gotika"], correct:1, fact:"Připomíná radnici ve Vídni.", t:"Liberec" },
+  { q:"Co dnes sídlí v bývalých městských lázních v Liberci?", a:["Knihovna","Oblastní galerie","Divadlo","Tržnice"], correct:1, fact:"Secesní lázně byly přestavěny na galerii.", t:"Liberec" },
+  { q:"Jak se Liberec jmenoval německy až do roku 1945?", a:["Reichenberg","Gablonz","Friedland","Warnsdorf"], correct:0, fact:"Liberec byl centrem převážně německy mluvícího pohraničí, tzv. Sudet.", t:"Liberec" },
+  { q:"Slavný běžkařský závod v Jizerských horách?", a:["Jizerská padesátka","Bílá stopa","Krkonošská 70","Šumavský maraton"], correct:0, fact:"Jizerská padesátka patří k nejstarším u nás.", t:"Liberec" },
+  { q:"Které město u Liberce je proslulé bižuterií a sklem?", a:["Turnov","Jablonec nad Nisou","Frýdlant","Semily"], correct:1, t:"Liberec" },
+  { q:"Hrad a zámek Frýdlant patřil v 17. století slavnému vojevůdci…?", a:["Žižkovi","Valdštejnovi","Trčkovi","Šternberkovi"], correct:1, fact:"Albrecht z Valdštejna byl vévodou frýdlantským.", t:"Liberec" },
+  { q:"Turnov je centrem oblasti zvané…?", a:["Český ráj","České Švýcarsko","Šumava","Beskydy"], correct:0, fact:"Český ráj je proslulý skalními městy.", t:"Liberec" },
+  { q:"Čím byl Liberec hospodářsky proslulý v 19. století?", a:["Těžbou uhlí","Textilním průmyslem","Loděnicemi","Automobilkou"], correct:1, fact:"Říkalo se mu rakouský Manchester.", t:"Liberec" },
+  { q:"Jak se jmenuje liberecké science centrum s planetáriem?", a:["Techmania","iQLANDIA","VIDA","Svět techniky"], correct:1, t:"Liberec" },
+  { q:"Liberecká botanická zahrada patří mezi…?", a:["nejmladší v Evropě","nejstarší v Česku","největší na světě","nově otevřené"], correct:1, fact:"Vznikla už v roce 1876.", t:"Liberec" },
+  { q:"Nedaleko Liberce se stýkají hranice tří států – kterých?", a:["ČR, Polsko, Německo","ČR, Slovensko, Rakousko","ČR, Německo, Rakousko","ČR, Polsko, Slovensko"], correct:0, fact:"Trojzemí leží u Hrádku nad Nisou.", t:"Liberec" },
+  { q:"Nejvyšší česká hora Jizerských hor?", a:["Ještěd","Smrk","Černá hora","Kotel"], correct:1, fact:"Smrk měří 1124 metrů.", t:"Liberec" },
+  { q:"Jak se jmenuje čtvrť Liberce s lanovkou na Ještěd?", a:["Horní Hanychov","Rochlice","Vesec","Ruprechtice"], correct:0, fact:"Z Horního Hanychova jezdí kabinková lanovka na vrchol.", t:"Liberec" },
+  { q:"Které pohoří leží jihovýchodně od Liberce a láká běžkaře?", a:["Krušné hory","Jizerské hory","Orlické hory","Brdy"], correct:1, t:"Liberec" },
+  { q:"Jak se jmenuje známé liberecké náměstí s radnicí?", a:["Václavské","Náměstí Dr. E. Beneše","Staroměstské","Masarykovo"], correct:1, t:"Liberec" },
+  { q:"Která zvířata jsou chloubou ZOO Liberec?", a:["Sloni","Bílí tygři","Pandy","Žirafy"], correct:1, fact:"Bílí tygři se stali symbolem zahrady i hokeje.", t:"Liberec" },
+  { q:"Jak se jmenuje obchodní centrum v centru Liberce u radnice?", a:["Nisa","Forum Liberec","Géčko","Plaza"], correct:1, t:"Liberec" },
+  { q:"Jezírko a park nad Libercem se jmenuje…?", a:["Lidové sady","Letná","Stromovka","Riegrovy sady"], correct:0, fact:"Lidové sady jsou oblíbeným výletním místem nad městem.", t:"Liberec" },
+
+  /* ---------- ALKOHOL ---------- */
+  { q:"Ze kterého obilí se nejčastěji vaří pivo?", a:["Pšenice","Ječmen","Žito","Oves"], correct:1, fact:"Naklíčenému a usušenému ječmenu se říká slad.", t:"Alkohol" },
+  { q:"Která země je považována za kolébku vinařství?", a:["Francie","Gruzie","Itálie","Španělsko"], correct:1, fact:"Nálezy z Gruzie ukazují víno staré 8000 let.", t:"Alkohol" },
+  { q:"Jak se jmenuje proces přeměny cukru na alkohol?", a:["Destilace","Pasterizace","Fermentace","Filtrace"], correct:2, fact:"Kvasinky mění cukr na alkohol a oxid uhličitý.", t:"Alkohol" },
+  { q:"Z čeho se vyrábí tequila?", a:["Z cukrové třtiny","Z agáve","Z brambor","Z kukuřice"], correct:1, fact:"Smí se použít jen modrá agáve z okolí města Tequila.", t:"Alkohol" },
+  { q:"Český bylinný likér z Karlových Varů?", a:["Fernet","Becherovka","Griotka","Tatratea"], correct:1, fact:"Vyrábí se podle tajné receptury od roku 1807.", t:"Alkohol" },
+  { q:"Z čeho se tradičně pálí slivovice?", a:["Z jablek","Z hrušek","Ze švestek","Z meruněk"], correct:2, fact:"Moravská slivovice má chráněné zeměpisné označení EU.", t:"Alkohol" },
+  { q:"Jaký nápoj vzniká destilací vína?", a:["Whisky","Rum","Brandy","Gin"], correct:2, fact:"Slovo brandy znamená v nizozemštině pálené víno.", t:"Alkohol" },
+  { q:"Která země je největším producentem vodky?", a:["Polsko","Rusko","Švédsko","Finsko"], correct:1, fact:"Slovo vodka pochází ze slova voda.", t:"Alkohol" },
+  { q:"Kolik procent alkoholu má obvykle vodka?", a:["10 %","20 %","40 %","70 %"], correct:2, fact:"Většina tvrdého alkoholu má kolem 40 %.", t:"Alkohol" },
+  { q:"Koktejl z rumu, limetky, máty a cukru?", a:["Margarita","Mojito","Cuba Libre","Daiquiri"], correct:1, fact:"Mojito pochází z Kuby.", t:"Alkohol" },
+  { q:"Koktejl s tequilou a solí na okraji sklenice?", a:["Cuba Libre","Margarita","Mojito","Daiquiri"], correct:1, t:"Alkohol" },
+  { q:"Z čeho se vyrábí pravý rum?", a:["Z cukrové třtiny","Z brambor","Z jablek","Z obilí"], correct:0, fact:"Pravý rum pochází hlavně z Karibiku.", t:"Alkohol" },
+  { q:"Která země je proslulá výrobou whisky?", a:["Skotsko","Itálie","Řecko","Portugalsko"], correct:0, fact:"Skotská whisky musí zrát aspoň 3 roky.", t:"Alkohol" },
+  { q:"Která toxická látka vznikající při odbourávání alkoholu v těle je hlavní příčinou kocoviny?", a:["Metanol","Acetaldehyd","Aceton","Glycerol"], correct:1, fact:"Acetaldehyd je pro tělo toxičtější než samotný etanol.", t:"Alkohol" },
+  { q:"Z čeho se vyrábí gin svou typickou chutí?", a:["Z jalovce","Z kmínu","Z anýzu","Z máty"], correct:0, fact:"Jalovcové bobule dávají ginu charakteristickou vůni.", t:"Alkohol" },
+  { q:"Šumivé víno z francouzské oblasti se smí jmenovat…?", a:["Prosecco","Šampaňské","Cava","Sekt"], correct:1, fact:"Pravé šampaňské pochází jen z oblasti Champagne.", t:"Alkohol" },
+  { q:"Na kolik procent objemu nejvýš smí klesnout alkohol v pivu, aby se v EU mohlo označit jako nealkoholické?", a:["0,0 %","max. 0,5 %","max. 1,2 %","max. 2 %"], correct:1, t:"Alkohol" },
+  { q:"Jaký destilát se vyrábí z jablek (kalvados)?", a:["Z hroznů","Z jablek","Z obilí","Z brambor"], correct:1, fact:"Kalvados pochází z francouzské Normandie.", t:"Alkohol" },
+  { q:"Z čeho se vaří saké?", a:["Z rýže","Z pšenice","Z brambor","Z kukuřice"], correct:0, fact:"Japonské saké se vyrábí kvašením rýže.", t:"Alkohol" },
+  { q:"Odkud pochází sladké portské víno?", a:["Ze Španělska","Z Portugalska","Z Itálie","Z Řecka"], correct:1, fact:"Portské víno se vyváží přístavem Porto.", t:"Alkohol" },
+  { q:"Co je typický základ koktejlu Cuba Libre?", a:["Vodka","Rum a kola","Gin a tonik","Whisky"], correct:1, t:"Alkohol" },
+  { q:"Která část výroby whisky jí dává barvu a chuť?", a:["Kvašení","Zrání v dubových sudech","Filtrace","Lahvování"], correct:1, t:"Alkohol" },
+  { q:"Jak se jmenuje míchaný nápoj z prosecca a broskve?", a:["Mojito","Bellini","Spritz","Sangria"], correct:1, t:"Alkohol" },
+  { q:"Co znamená u vína označení „suché“?", a:["Hodně sladké","Skoro bez zbytkového cukru","Bez alkoholu","Perlivé"], correct:1, t:"Alkohol" },
+  { q:"Hladinka, mlíko a šnyt jsou v Česku…?", a:["Druhy chmele","Skutečné způsoby čepování piva","Názvy pivních sklenic","Slangové výrazy pro opilost"], correct:1, fact:"Liší se hlavně poměrem piva a husté pěny ve sklenici.", t:"Alkohol" },
+  { q:"Jaký nápoj se vyrábí z medu kvašením?", a:["Cider","Medovina","Perry","Kombucha"], correct:1, fact:"Medovina patří k nejstarším alkoholickým nápojům.", t:"Alkohol" },
+  { q:"Kolik mililitrů má v Česku běžná dávka („panák“) tvrdého alkoholu?", a:["20 ml","40 ml","60 ml","100 ml"], correct:1, t:"Alkohol" },
+  { q:"Jak se jmenuje španělský nápoj z vína a ovoce?", a:["Sangria","Spritz","Bellini","Mojito"], correct:0, t:"Alkohol" },
+  { q:"Co je hlavní surovinou whisky?", a:["Hrozny","Obilí","Brambory","Třtina"], correct:1, t:"Alkohol" },
+  { q:"Které víno je červené?", a:["Ryzlink","Frankovka","Veltlín","Müller Thurgau"], correct:1, fact:"Frankovka patří mezi oblíbené moravské červené odrůdy.", t:"Alkohol" },
+
+  /* ---------- SPORT / ZÁBAVA ---------- */
+  { q:"Kolik bodů je třeba k vyhrání gamu v tenise (bez shody)?", a:["2","3","4","5"], correct:2, fact:"Bodují se 15, 30, 40 a game.", t:"Sport" },
+  { q:"Nejprestižnější filmová cena?", a:["Grammy","Oscar","Emmy","Tony"], correct:1, fact:"Sošku Oscara navrhli v roce 1928.", t:"Sport" },
+  { q:"Kolik členů mělo původně ABBA?", a:["2","3","4","5"], correct:2, fact:"Název vznikl z písmen jmen: Agnetha, Björn, Benny, Anni-Frid.", t:"Sport" },
+  { q:"Kolik setů je třeba vyhrát ve volejbalu?", a:["2","3","4","5"], correct:1, fact:"Hraje se na tři vítězné sety z pěti.", t:"Sport" },
+  { q:"Ve kterém roce se hrálo úplně první mistrovství světa ve fotbale?", a:["1928","1930","1934","1938"], correct:1, fact:"Vyhrál ho pořadatelský Uruguay.", t:"Sport" },
+  { q:"Kolik hráčů má basketbalový tým na hřišti?", a:["4","5","6","7"], correct:1, t:"Sport" },
+  { q:"Kolik kruhů má olympijská vlajka a co symbolizují?", a:["5 kruhů – kontinenty","6 kruhů – světadíly","4 kruhy – roční období","5 kruhů – druhy sportu"], correct:0, t:"Sport" },
+  { q:"Ve kterém sportu se používá puk?", a:["Fotbal","Lední hokej","Tenis","Basketbal"], correct:1, t:"Sport" },
+  { q:"Která země vyhrála mistrovství světa ve fotbale 2018?", a:["Německo","Francie","Brazílie","Argentina"], correct:1, t:"Sport" },
+  { q:"Kolik je hráčů v jednom hokejovém týmu na ledě (s brankářem)?", a:["5","6","7","4"], correct:1, t:"Sport" },
+  { q:"Jak se jmenuje nejslavnější cyklistický závod?", a:["Giro d'Italia","Tour de France","Vuelta","Paříž–Roubaix"], correct:1, t:"Sport" },
+  { q:"Která hra má figurky jako pěšec, věž a střelec?", a:["Dáma","Šachy","Go","Backgammon"], correct:1, t:"Sport" },
+  { q:"V golfu skóre „birdie“ znamená výsledek na jamce…?", a:["Stejný jako par","O 1 ránu méně než par","O 2 rány méně než par","O 1 ránu více než par"], correct:1, t:"Sport" },
+  { q:"Ve kterém sportu vyniká Usain Bolt?", a:["Plavání","Sprint","Skok do dálky","Box"], correct:1, fact:"Bolt drží světový rekord na 100 m.", t:"Sport" },
+  { q:"Kolik grandslamových turnajů se v tenise hraje za jeden rok?", a:["2","3","4","6"], correct:2, fact:"Australian Open, Roland Garros, Wimbledon a US Open.", t:"Sport" },
+  { q:"Jak se nazývá vítězný tah v šachu, kdy král nemůže uniknout napadení?", a:["Pat","Mat","Rošáda","Gambit"], correct:1, t:"Sport" },
+  { q:"Kolik hráčů má na ledě jeden tým v curlingu?", a:["2","3","4","6"], correct:2, t:"Sport" },
+  { q:"Jak se v judu nazývá technika, kterou soupeře položíte přesně na záda a získáte tím plný bod?", a:["Ippon","Waza-ari","Yuko","Koka"], correct:0, t:"Sport" },
+  { q:"Jak se jmenuje nejvyšší fotbalová soutěž v Anglii?", a:["La Liga","Premier League","Serie A","Bundesliga"], correct:1, t:"Sport" },
+  { q:"Jak dlouho trvá normální hrací doba zápasu v ragby union?", a:["60 minut","70 minut","80 minut","90 minut"], correct:2, t:"Sport" },
+  { q:"Která hra se hraje s černými a bílými kameny na mřížce?", a:["Šachy","Go","Dáma","Mlýn"], correct:1, t:"Sport" },
+  { q:"Ve kterém městě se konaly olympijské hry 2021 (přesunuté)?", a:["Peking","Tokio","Paříž","Londýn"], correct:1, t:"Sport" },
+  { q:"Kolik minut trvá jedna čtvrtina v zápase NBA?", a:["10","12","15","20"], correct:1, t:"Sport" },
+  { q:"Jak se jmenuje nejvyšší možné skóre v bowlingu (12 strajků za sebou)?", a:["200 bodů","250 bodů","300 bodů","350 bodů"], correct:2, t:"Sport" },
+  { q:"Která země je domovem sportu sumó?", a:["Čína","Japonsko","Korea","Thajsko"], correct:1, t:"Sport" },
+  { q:"Jak se jmenuje míč ve sportu zvaném ragby (tvar)?", a:["Kulatý","Oválný","Hranatý","Plochý"], correct:1, t:"Sport" },
+  { q:"Kolik bodů má koš z dálky (trojka) v basketbalu?", a:["1","2","3","4"], correct:2, t:"Sport" },
+  { q:"Kolik dráhových čar (drah) má standardní olympijský atletický ovál?", a:["6","8","9","10"], correct:1, t:"Sport" },
+  { q:"Kolik hráčů hraje na hřišti v jednom týmu v házené?", a:["6","7","8","9"], correct:1, fact:"Šest hráčů v poli a brankář.", t:"Sport" },
+  { q:"Jak se jmenuje nejznámější tenisový turnaj na trávě v Londýně?", a:["Roland Garros","Wimbledon","US Open","Australian Open"], correct:1, t:"Sport" },
+
+  /* ---------- VŠEOBECNÉ ---------- */
+  { q:"Který filozof je autorem výroku „Vím, že nic nevím“?", a:["Platón","Sókratés","Aristotelés","Epikúros"], correct:1, t:"Všeobecné" },
+  { q:"Která kniha bible otevírá Nový zákon?", a:["Genesis","Evangelium podle Matouše","Zjevení Janovo","Žalmy"], correct:1, t:"Všeobecné" },
+  { q:"Jak se nazývá iracionální strach z výšek?", a:["Klaustrofobie","Akrofobie","Agorafobie","Arachnofobie"], correct:1, t:"Všeobecné" },
+  { q:"Který autor napsal dystopický román 1984?", a:["Aldous Huxley","George Orwell","Ray Bradbury","Franz Kafka"], correct:1, t:"Všeobecné" },
+  { q:"Jak se nazývá jednotka informace skládající se z 8 bitů?", a:["Pixel","Bajt","Hertz","Pascal"], correct:1, t:"Všeobecné" },
+  { q:"Co znamená zkratka URL?", a:["Druh souboru","Webová adresa","Typ viru","Program"], correct:1, t:"Všeobecné" },
+  { q:"Která planeta sluneční soustavy se otočí kolem své osy nejrychleji?", a:["Merkur","Země","Jupiter","Mars"], correct:2, fact:"Jeden den na Jupiteru trvá necelých 10 hodin.", t:"Všeobecné" },
+  { q:"Kolik chromozomů má běžně lidská buňka?", a:["23","44","46","48"], correct:2, fact:"Jde o 23 párů zděděných po obou rodičích.", t:"Všeobecné" },
+  { q:"Jak se nazývá dlouhodobý růst cenové hladiny, kdy peníze ztrácí kupní sílu?", a:["Deflace","Inflace","Recese","Stagnace"], correct:1, t:"Všeobecné" },
+  { q:"Po jakém římském bohu je pojmenována planeta Mars?", a:["Bůh moudrosti","Bůh války","Bůh moře","Bůh slunce"], correct:1, t:"Všeobecné" },
+  { q:"Jak se nazývá obrazné pojmenování založené na podobnosti, např. „moře lidí“?", a:["Metonymie","Metafora","Personifikace","Hyperbola"], correct:1, t:"Všeobecné" },
+  { q:"Který prvek má v periodické tabulce atomové číslo 1?", a:["Helium","Vodík","Lithium","Uhlík"], correct:1, t:"Všeobecné" },
+  { q:"Jak se nazývá vědní obor zkoumající původ a vývoj slov?", a:["Etymologie","Sémantika","Fonetika","Morfologie"], correct:0, t:"Všeobecné" },
+  { q:"Jak se nazývá jev, kdy nekompetentní lidé mívají sklon přeceňovat své schopnosti víc než ti skutečně schopní?", a:["Halo efekt","Dunning-Krugerův efekt","Placebo efekt","Confirmation bias"], correct:1, t:"Všeobecné" },
+  { q:"Jak se nazývá nejmenší jednotka jazyka, která ještě nese vlastní význam (např. předpona nebo kořen slova)?", a:["Foném","Morfém","Lexém","Sufix"], correct:1, t:"Všeobecné" },
+  { q:"Která planeta má výrazné prstence?", a:["Mars","Venuše","Saturn","Merkur"], correct:2, t:"Všeobecné" },
+  { q:"Kolik je výsledek 17 × 13?", a:["201","211","221","231"], correct:2, t:"Všeobecné" },
+  { q:"Jaký je opak slova „altruismus“?", a:["Egoismus","Hédonismus","Stoicismus","Nihilismus"], correct:0, t:"Všeobecné" },
+  { q:"Která antická filozofická škola učila, že klíčem ke štěstí je rozumová sebekontrola a smíření s osudem?", a:["Epikureismus","Stoicismus","Cynismus","Skepticismus"], correct:1, t:"Všeobecné" },
+  { q:"Co je hlavní složkou vzduchu?", a:["Kyslík","Dusík","Oxid uhličitý","Vodík"], correct:1, fact:"Dusík tvoří asi 78 % vzduchu.", t:"Všeobecné" },
+  { q:"Hudební skladatel byl v době psaní své 9. symfonie už úplně hluchý. Kdo to byl?", a:["Mozart","Beethoven","Bach","Chopin"], correct:1, t:"Všeobecné" },
+  { q:"Jak se nazývá tíhové zrychlení, se kterým tělesa volně padají k Zemi (přibližně 9,81 m/s²)?", a:["Newtonova konstanta","Gravitační (tíhové) zrychlení","Setrvačná síla","Odstředivá síla"], correct:1, t:"Všeobecné" },
+  { q:"Kolik je 13 na druhou (13²)?", a:["149","159","169","179"], correct:2, t:"Všeobecné" },
+  { q:"Jaký tvar má značka STOP?", a:["Kruh","Trojúhelník","Osmiúhelník","Čtverec"], correct:2, t:"Všeobecné" },
+  { q:"Kolik stran má pravidelný mnohoúhelník zvaný dodekagon?", a:["8","10","12","14"], correct:2, t:"Všeobecné" },
+  { q:"Jak se nazývá iracionální strach z pavouků?", a:["Arachnofobie","Akrofobie","Agorafobie","Nyktofobie"], correct:0, t:"Všeobecné" },
+  { q:"Která ekonomická veličina vyjadřuje celkovou hodnotu zboží a služeb vyrobených v zemi za rok?", a:["Inflace","HDP","CPI","Deficit"], correct:1, t:"Všeobecné" },
+  { q:"Jak se nazývá literární útvar, ve kterém autor líčí ideální, dokonalou společnost?", a:["Utopie","Dystopie","Alegorie","Sci-fi"], correct:0, t:"Všeobecné" },
+  { q:"Jak se nazývá proces, při kterém kapalina přechází přímo na plyn bez varu, např. mokré prádlo na šňůře?", a:["Vypařování","Var","Kondenzace","Sublimace"], correct:0, t:"Všeobecné" },
+  { q:"Jak se nazývá psychologický jev, kdy si lidé vybavují a vyhledávají hlavně informace potvrzující jejich vlastní názor?", a:["Confirmation bias","Halo efekt","Placebo efekt","Anchoring"], correct:0, t:"Všeobecné" },
+
+  // Příklad otázky s obrázkem (ukáže se jen na TV):
+  // { q:"Jaké auto to je?", a:["BMW Z4","Mercedes SLK","Porsche Boxster","Audi TT"], correct:0, img:"media/auto.jpg" },
+];
+
+/* barvy + tvary + názvy (pro čtení nahlas) */
+const COLORS = ["#2f6bff","#ff7a1a","#1ed760","#ff3da6"];
+const SHAPES = ["▲","◆","●","■"];
+const COLOR_NAMES = ["modrá","oranžová","zelená","růžová"];
+// barvy pro postavu hráče (víc na výběr, nezávislé na barvách odpovědí)
+const AVATAR_COLORS = ["#2f6bff","#ff7a1a","#1ed760","#ff3da6","#ffd23f","#a855f7","#06b6d4","#ef4444","#84cc16","#f472b6","#14b8a6","#fb923c"];
+const AVATARS = ["🦊","🐼","🐸","🦄","🐲","🦁","🐙","👾","🤖","🦖","🐝","🦉","🐧","🦋","🐵","🐶","🐱","🦅","🦈","🐢","🐯","🐨","🐰","🦇","🐺","🦝","🍕","🚀","⚽","🎸","👽","🎃","💀","🌟","🔥","🍩"];
+
+/* ============================================================
+   4) POMOCNÉ
+   ============================================================ */
+const $=id=>document.getElementById(id);
+function show(id){["screen-landing","screen-host","screen-ctrl"].forEach(s=>$(s).classList.toggle("hidden",s!==id));}
+function sub(parent,active){ // přepínání podobrazovek
+  Object.keys(parent).forEach(k=>$(parent[k]).classList.toggle("hidden",parent[k]!==active));
+}
+function toast(msg){const t=$("toast");t.textContent=msg;t.classList.remove("hidden");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add("hidden"),2200);}
+function randCode(){const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(let i=0;i<4;i++)s+=A[Math.floor(Math.random()*A.length)];return s;}
+function uid(){return "p"+Math.random().toString(36).slice(2,9);}
+
+// náhodný výběr otázek do hry (sdílený mezi TV a telefony přes Firebase)
+let gameQ=[]; // pole indexů do QUESTIONS pro tuto hru
+function shuffleArr(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function pickGameQuestions(){
+  const n=Math.min(SETTINGS.questionsPerGame, QUESTIONS.length);
+  // seskup indexy otázek podle tématu
+  const byTopic={};
+  QUESTIONS.forEach((q,idx)=>{ const t=q.t||"_"; (byTopic[t]=byTopic[t]||[]).push(idx); });
+  const topics=shuffleArr(Object.keys(byTopic));
+  // rozděl počet rovnoměrně mezi témata, zbytek rozhoď náhodně
+  const base=Math.floor(n/topics.length);
+  let remainder=n-base*topics.length;
+  let picked=[];
+  topics.forEach(t=>{
+    let take=base+(remainder>0?1:0);
+    if(remainder>0) remainder--;
+    picked=picked.concat(shuffleArr(byTopic[t]).slice(0,Math.min(take,byTopic[t].length)));
+  });
+  // kdyby nějaké téma mělo míň otázek, doplň náhodně z celku
+  if(picked.length<n){
+    const rest=shuffleArr([...Array(QUESTIONS.length).keys()].filter(i=>picked.indexOf(i)<0));
+    picked=picked.concat(rest.slice(0,n-picked.length));
+  }
+  return shuffleArr(picked).slice(0,n); // zamíchat, ať nejdou po tématech
+}
+function getQ(i){ const idx=(gameQ&&gameQ[i]!==undefined)?gameQ[i]:i; return QUESTIONS[idx]; }
+function gameLen(){ return (gameQ&&gameQ.length)?gameQ.length:Math.min(SETTINGS.questionsPerGame,QUESTIONS.length); }
+
+/* čtení nahlas – jen TV */
+let voiceCS=null;
+function pickVoice(){
+  const all=speechSynthesis.getVoices();
+  // 1) preferuj češtinu, jinak slovenštinu (zní česky líp než anglický hlas)
+  let v=all.filter(x=>x.lang&&x.lang.toLowerCase().startsWith("cs"));
+  if(!v.length) v=all.filter(x=>x.lang&&x.lang.toLowerCase().startsWith("sk"));
+  if(!v.length){ voiceCS=null; return; }
+  // 2) ohodnoť kvalitu podle názvu – neuronové/online/Google bývají nejpřirozenější
+  const score=(x)=>{
+    const n=(x.name||"").toLowerCase(); let s=0;
+    if(/natural|neural|online/.test(n)) s+=60;   // moderní neuronové hlasy
+    if(n.includes("google"))            s+=45;
+    if(n.includes("microsoft"))         s+=25;
+    if(/vlasta|jakub|iveta|zuzana/.test(n)) s+=15; // známé kvalitní české hlasy
+    if(!x.localService)                 s+=10;   // cloudové bývají lepší než lokální
+    if(/espeak|e-speak|compact|robot/.test(n)) s-=80; // robotické – až úplně nakonec
+    return s;
+  };
+  v.sort((a,b)=>score(b)-score(a));
+  voiceCS=v[0];
+}
+if("speechSynthesis"in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice;}
+function speak(text,cb){
+  let fired=false;
+  const fire=()=>{ if(fired)return; fired=true; if(cb)cb(); };
+  if(!SETTINGS.readAloud||!("speechSynthesis"in window)){ fire(); return; }
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang=(voiceCS&&voiceCS.lang)||"cs-CZ"; if(voiceCS)u.voice=voiceCS; u.rate=SETTINGS.speechRate; u.pitch=1; u.volume=1;
+    u.onend=fire; u.onerror=fire;
+    speechSynthesis.speak(u);
+    // pojistka: kdyby hlas selhal/zasekl se, přesto odemkni (odhad podle délky textu)
+    if(cb){ const est=Math.min(30000, 2500+text.length*90); setTimeout(fire,est); }
+  }catch(e){ fire(); }
+}
+
+/* jednoduché zvuky (Web Audio) */
+let actx=null;
+function beep(freq,dur,type){try{if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();const o=actx.createOscillator(),g=actx.createGain();o.type=type||"square";o.frequency.value=freq;o.connect(g);g.connect(actx.destination);g.gain.setValueAtTime(.15,actx.currentTime);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+dur);o.start();o.stop(actx.currentTime+dur);}catch(e){}}
+function sndBuzz(){beep(440,.12,"square");}
+function sndCorrect(){beep(660,.1);setTimeout(()=>beep(880,.18),90);}
+function sndTick(){beep(300,.04,"sine");}
+
+/* ============================================================
+   5) ROUTOVÁNÍ ROLÍ
+   ============================================================ */
+const params=new URLSearchParams(location.search);
+const ctrlRoom=(params.get("room")||"").toUpperCase();
+let ROOM=null;
+
+if(ctrlRoom){ ROOM=ctrlRoom; startController(); }
+else { show("screen-landing"); }
+
+/* ============================================================
+   6) HOST (TV)
+   ============================================================ */
+const hostSub={lobby:"host-lobby",question:"host-question",board:"host-board"};
+let hostPlayers={};      // pid -> {name,avatar,color,score,connected}
+let hostUnsub=[];
+let timerInt=null;
+let unlockFallbackTimer=null, questionUnlocked=false;
+let prevStandings=[], prevScores={}, boardScrollAnim=null;
+
+function becomeHost(){
+  if(actx===null){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  speak(" "); // odemkne hlas (potřebuje kliknutí)
+  ROOM=randCode();
+  show("screen-host");sub(hostSub,"host-lobby");
+  const base={
+    meta:{ state:"lobby", started:false, qIndex:-1, locked:true, deadline:0, total:Math.min(SETTINGS.questionsPerGame,QUESTIONS.length) },
+  };
+  db.ref("rooms/"+ROOM).set(base).then(()=>{
+    $("roomcode").textContent=ROOM;
+    const url=location.origin+location.pathname+"?room="+ROOM;
+    $("qrbox").innerHTML="";
+    new QRCode($("qrbox"),{text:url,width:240,height:240,colorDark:"#160a36",colorLight:"#ffffff"});
+    // poslouchej hráče
+    db.ref("rooms/"+ROOM+"/players").on("value",snap=>{
+      hostPlayers=snap.val()||{};
+      renderLobbyPlayers();
+      const n=Object.keys(hostPlayers).length;
+      const sb=$("startbtn");
+      sb.disabled=(n===0);
+      sb.textContent=n===0?"Start (čeká na hráče…)":"Start ("+n+" hráčů) ▶";
+    });
+  });
+}
+
+function renderLobbyPlayers(){
+  const box=$("lobby-players");box.innerHTML="";
+  Object.values(hostPlayers).forEach(p=>{
+    const online=(p.connected!==false);
+    const c=document.createElement("div");c.className="pchip"+(online?"":" offline");
+    c.innerHTML='<span class="pdot '+(online?"on":"")+'"></span><span>'+(p.avatar||"🙂")+' '+escapeHtml(p.name||"?")+'</span>';
+    box.appendChild(c);
+  });
+}
+function escapeHtml(s){return (s+"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+function startGame(){
+  if(Object.keys(hostPlayers).length===0){ toast("Připoj nejdřív aspoň jednoho hráče"); return; }
+  prevStandings=[]; prevScores={};
+  gameQ=pickGameQuestions();   // náhodný výběr otázek pro tuto hru
+  db.ref("rooms/"+ROOM+"/quiz").set(gameQ);   // sdílej s telefony
+  db.ref("rooms/"+ROOM+"/meta").update({started:true, total:gameQ.length});
+  db.ref("rooms/"+ROOM+"/players").off();        // lobby zamčeno
+  db.ref("rooms/"+ROOM+"/players").on("value",s=>{hostPlayers=s.val()||{};}); // dál sleduj skóre/odpojení
+  hostShowQuestion(0);
+}
+
+function hostShowQuestion(i){
+  clearInterval(timerInt);
+  cancelBoardScroll();
+  const Q=getQ(i);
+  sub(hostSub,"host-question");
+  $("h-reveal-msg").classList.add("hidden");
+  $("h-next").classList.add("hidden");
+  $("h-qcount").textContent="Otázka "+(i+1)+" / "+gameLen();
+  $("h-qtext").textContent=Q.q;
+  // obrázek jen na TV
+  const m=$("h-media");
+  if(Q.img){m.src=Q.img;m.classList.remove("hidden");}else{m.classList.add("hidden");m.removeAttribute("src");}
+  // odpovědi
+  const box=$("h-answers");box.innerHTML="";
+  Q.a.forEach((txt,idx)=>{
+    const d=document.createElement("div");d.className="ans c"+idx;d.dataset.idx=idx;
+    d.innerHTML='<span class="shape">'+SHAPES[idx]+'</span><span>'+escapeHtml(txt)+'</span>';
+    box.appendChild(d);
+  });
+  $("h-timer").textContent="";
+  // stav: otázka, zatím zamčeno (čte se)
+  db.ref("rooms/"+ROOM+"/meta").update({state:"question",qIndex:i,locked:true,deadline:0});
+  db.ref("rooms/"+ROOM+"/answers/"+i).remove();
+
+  // přečti otázku + odpovědi, pak odemkni a spusť odpočet
+  questionUnlocked=false;
+  const speech=Q.q+". Možnosti: "+Q.a.map((t,k)=>COLOR_NAMES[k]+": "+t).join(", ")+".";
+  readThenUnlock(speech,()=>hostUnlock(i));
+  // tvrdá pojistka, kdyby cokoli selhalo
+  clearTimeout(unlockFallbackTimer);
+  unlockFallbackTimer=setTimeout(()=>hostUnlock(i),12000);
+}
+
+// přečte text a zavolá cb až po SKUTEČNÉM dočtení (hlídá speechSynthesis.speaking)
+function readThenUnlock(text,cb){
+  if(!SETTINGS.readAloud||!("speechSynthesis"in window)){ setTimeout(cb,400); return; }
+  let done=false,started=false,t=0,iv=null;
+  const fire=()=>{ if(done)return; done=true; if(iv)clearInterval(iv); cb(); };
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang=(voiceCS&&voiceCS.lang)||"cs-CZ"; if(voiceCS)u.voice=voiceCS; u.rate=SETTINGS.speechRate; u.pitch=1; u.volume=1;
+    u.onend=fire; u.onerror=fire;
+    speechSynthesis.speak(u);
+    iv=setInterval(()=>{
+      t+=150;
+      if(speechSynthesis.speaking) started=true;
+      if(started && !speechSynthesis.speaking) return fire(); // dočteno
+      if(!started && t>2500) return fire();                   // čtení nenaběhlo
+      if(t>22000) return fire();                              // tvrdá pojistka
+    },150);
+  }catch(e){ fire(); }
+}
+
+function hostUnlock(i){
+  if(questionUnlocked)return; // už odemčeno, neresetuj znovu odpočet
+  questionUnlocked=true;
+  clearTimeout(unlockFallbackTimer);
+  const deadline=Date.now()+SETTINGS.answerSeconds*1000;
+  db.ref("rooms/"+ROOM+"/meta").update({locked:false,deadline:deadline});
+  // sleduj odpovědi -> konec když odpoví všichni
+  db.ref("rooms/"+ROOM+"/answers/"+i).on("value",snap=>{
+    const ans=snap.val()||{};
+    const answered=Object.keys(ans).length;
+    const connected=Object.values(hostPlayers).filter(p=>p.connected!==false).length;
+    if(connected>0&&answered>=connected){hostReveal(i);}
+  });
+  // odpočet
+  let left=SETTINGS.answerSeconds;
+  $("h-timer").textContent=left;
+  timerInt=setInterval(()=>{
+    left=Math.max(0,Math.ceil((deadline-Date.now())/1000));
+    $("h-timer").textContent=left;
+    if(left<=5&&left>0)sndTick();
+    if(left<=0){clearInterval(timerInt);hostReveal(i);}
+  },250);
+}
+
+function hostReveal(i){
+  clearInterval(timerInt);
+  db.ref("rooms/"+ROOM+"/answers/"+i).off();
+  const Q=getQ(i);
+  // spočítej skóre
+  db.ref("rooms/"+ROOM+"/answers/"+i).once("value").then(snap=>{
+    const ans=snap.val()||{};
+    let correctCount=0;const updates={};
+    Object.keys(ans).forEach(pid=>{
+      if(ans[pid]===Q.correct){
+        correctCount++;
+        const cur=(hostPlayers[pid]&&hostPlayers[pid].score)||0;
+        updates["players/"+pid+"/score"]=cur+SETTINGS.pointsPerCorrect;
+      }
+    });
+    db.ref("rooms/"+ROOM).update(updates);
+    db.ref("rooms/"+ROOM+"/meta").update({state:"reveal",locked:true});
+
+    // vizuál: zvýrazni správnou, ostatní ztlum
+    document.querySelectorAll("#h-answers .ans").forEach(el=>{
+      const idx=+el.dataset.idx;
+      if(idx===Q.correct){el.classList.add("win");}else{el.classList.add("dim");}
+    });
+    sndCorrect();
+    const msgEl=$("h-reveal-msg");msgEl.classList.remove("hidden");
+    let resultText;
+    if(correctCount===0){
+      const noOne=["Tohle nikdo nedal!","Nula správných — pěkně záludné!","To bylo těžké, co? Nikdo netrefil.","Ani jeden! Příště to vyjde."];
+      resultText=noOne[Math.floor(Math.random()*noOne.length)];
+    }else{
+      resultText="Správně: "+Q.a[Q.correct];
+    }
+    msgEl.innerHTML=escapeHtml(resultText);
+    const spoken=(correctCount===0?resultText:"Správně bylo: "+Q.a[Q.correct])+".";
+    speak(spoken);
+    // po chvilce ukaž žebříček (kde se řekne i zajímavost)
+    setTimeout(()=>showBoard(i),2400);
+  });
+}
+
+function showBoard(i){
+  sub(hostSub,"host-board");
+  const last=(i>=gameLen()-1);
+  $("b-title").textContent=last?"konec hry — výsledky":"průběžné pořadí";
+  $("b-continue").textContent=last?"Hrát znovu":"Další otázka →";
+  const factEl=$("b-fact"); factEl.classList.add("hidden"); factEl.textContent="";
+  if(last){
+    db.ref("rooms/"+ROOM+"/meta").update({state:"finished"});
+    renderFinalPodium($("b-board"));
+  }else{
+    renderBoardTV($("b-board"));
+    // zajímavost se řekne a ukáže až tady, když je vidět tabulka
+    const f=getQ(i)&&getQ(i).fact;
+    if(f){
+      factEl.textContent="💡 "+f; factEl.classList.remove("hidden");
+      setTimeout(()=>speak(f),700);
+    }
+  }
+}
+
+// na konci hry: nejdřív postupně pogratuluj 3., 2. a 1. místu, pak ukaž celý žebříček
+function renderFinalPodium(container){
+  container.innerHTML="";
+  const arr=sortedPlayers();
+  const stage=document.createElement("div");
+  stage.style.cssText="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:30dvh";
+  const big=document.createElement("div");big.className="statusbig display";big.style.fontSize="clamp(28px,7vw,52px)";
+  const sub2=document.createElement("div");sub2.style.cssText="color:var(--muted);font-weight:700;font-size:clamp(16px,3vw,22px)";
+  stage.appendChild(big);stage.appendChild(sub2);
+  container.appendChild(stage);
+
+  const order=[2,1,0]; // index do arr: nejdřív 3. místo, pak 2., pak 1.
+  const labels=["🥉 Třetí místo","🥈 Druhé místo","🥇 VÍTĚZ!"];
+  let step=0;
+  function next(){
+    if(step>=order.length){
+      setTimeout(()=>renderBoardTV(container),1600);
+      return;
+    }
+    const p=arr[order[step]];
+    if(!p){step++;next();return;}
+    big.textContent=labels[step];
+    sub2.textContent=(p.avatar||"")+" "+(p.name||"?")+" — "+(p.score||0)+" b.";
+    speak(labels[step].replace(/[^\wáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ ]/g,"")+": "+(p.name||"")+", "+(p.score||0)+" bodů.");
+    sndCorrect();
+    step++;
+    setTimeout(next,2800);
+  }
+  next();
+}
+
+function sortedPlayers(){
+  const arr=Object.entries(hostPlayers).map(([pid,p])=>({pid,...p,score:p.score||0}));
+  arr.sort((a,b)=>b.score-a.score);
+  return arr;
+}
+
+function animateNumber(el,from,to,dur){
+  if(from===to){el.textContent=to;return;}
+  const t0=performance.now();
+  (function step(t){const k=Math.min(1,(t-t0)/dur);el.textContent=Math.round(from+(to-from)*k);if(k<1)requestAnimationFrame(step);})(t0);
+}
+
+function renderBoardTV(container){
+  container.innerHTML="";
+  const medal=["🥇","🥈","🥉"];
+  const ROWH=66;
+  const arr=sortedPlayers();
+  arr.forEach((p,idx)=>{
+    const online=(p.connected!==false);
+    const r=document.createElement("div");
+    r.className="row"+(idx===0?" lead":"")+(online?"":" offline");
+    r.innerHTML='<div class="rank">'+(idx<3?medal[idx]:(idx+1)+".")+'</div>'+
+      '<div class="nm"><span class="pdot '+(online?"on":"")+'"></span>'+(p.avatar||"")+' '+escapeHtml(p.name||"?")+'</div>'+
+      '<div class="sc" data-to="'+p.score+'">0</div>';
+    // dojezd na pozici z předchozího pořadí
+    const oldIdx=prevStandings.indexOf(p.pid);
+    r.style.animation="none";
+    r.style.transition="none";
+    r.style.transform="translateY("+(((oldIdx>=0?oldIdx:idx)-idx)*ROWH)+"px)";
+    r.style.opacity=(oldIdx>=0)?"1":"0";
+    container.appendChild(r);
+  });
+  // spustit dojezd
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    container.querySelectorAll(".row").forEach(r=>{
+      r.style.transition="transform .85s cubic-bezier(.2,.85,.25,1), opacity .5s";
+      r.style.transform="translateY(0)"; r.style.opacity="1";
+    });
+  }));
+  // count-up skóre z předchozí hodnoty
+  container.querySelectorAll(".sc").forEach(el=>{
+    const to=+el.dataset.to; const pid=arr[[...container.querySelectorAll(".sc")].indexOf(el)].pid;
+    animateNumber(el, prevScores[pid]||0, to, 800);
+  });
+  // ulož stav pro příští dojezd
+  prevStandings=arr.map(x=>x.pid);
+  prevScores={}; arr.forEach(p=>prevScores[p.pid]=p.score);
+  // rychlý auto-scroll (max 10 s celkem, přeskočitelný)
+  startBoardScroll(container, arr.length);
+}
+
+function startBoardScroll(container,n){
+  cancelBoardScroll();
+  setTimeout(()=>{
+    const max=container.scrollHeight-container.clientHeight;
+    if(max<=4)return;
+    const total=Math.min(10000, 2500+n*350), down=total*0.62, up=total*0.38, hold=900;
+    let t0=null;
+    function frame(t){
+      if(t0===null)t0=t;
+      const e=t-t0; let y;
+      if(e<hold) y=0;
+      else if(e<hold+down) y=max*((e-hold)/down);
+      else if(e<hold+down+up) y=max*(1-((e-hold-down)/up));
+      else { container.scrollTop=0; boardScrollAnim=null; return; }
+      container.scrollTop=y;
+      boardScrollAnim=requestAnimationFrame(frame);
+    }
+    boardScrollAnim=requestAnimationFrame(frame);
+  },1100); // chvíli ukázat špičku, ať doběhne dojezd
+}
+function cancelBoardScroll(){ if(boardScrollAnim){cancelAnimationFrame(boardScrollAnim);boardScrollAnim=null;} }
+
+// osobní žebříček na mobilu: top 3 + ty a okolí
+function renderPersonalBoard(container,players){
+  container.innerHTML="";
+  const medal=["🥇","🥈","🥉"];
+  const arr=Object.entries(players).map(([pid,p])=>({pid,...p,score:p.score||0}));
+  arr.sort((a,b)=>b.score-a.score);
+  const n=arr.length, myIdx=arr.findIndex(x=>x.pid===myPid);
+  const rows=[];
+  if(n<=10){ for(let i=0;i<n;i++) rows.push({idx:i}); }
+  else{
+    for(let i=0;i<3;i++) rows.push({idx:i});
+    let start=Math.max(3,myIdx-3), end=Math.min(n-1,myIdx+3);
+    if(end-start<6){ if(start===3) end=Math.min(n-1,start+6); else start=Math.max(3,end-6); }
+    if(start>3) rows.push({gap:true});
+    for(let i=start;i<=end;i++) rows.push({idx:i});
+  }
+  rows.forEach(r=>{
+    if(r.gap){ const d=document.createElement("div");d.className="row gap";d.innerHTML='<div class="rank">⋯</div>';container.appendChild(d);return; }
+    const p=arr[r.idx], isMe=(p.pid===myPid);
+    const el=document.createElement("div");
+    el.className="row"+(isMe?" me":"")+(r.idx===0?" lead":"");
+    el.innerHTML='<div class="rank">'+(r.idx<3?medal[r.idx]:(r.idx+1)+".")+'</div>'+
+      '<div class="nm"><span class="pdot '+((p.connected!==false)?"on":"")+'"></span>'+(p.avatar||"")+' '+escapeHtml(p.name||"?")+(isMe?" (ty)":"")+'</div>'+
+      '<div class="sc">'+p.score+'</div>';
+    container.appendChild(el);
+  });
+}
+
+function hostNext(){
+  db.ref("rooms/"+ROOM+"/meta/qIndex").once("value").then(s=>{
+    const i=s.val();
+    if(i>=gameLen()-1){
+      // restart – nová náhodná sada otázek
+      prevStandings=[]; prevScores={};
+      gameQ=pickGameQuestions();
+      const updates={ quiz:gameQ };
+      Object.keys(hostPlayers).forEach(pid=>updates["players/"+pid+"/score"]=0);
+      db.ref("rooms/"+ROOM).update(updates).then(()=>{
+        db.ref("rooms/"+ROOM+"/meta").update({total:gameQ.length});
+        hostShowQuestion(0);
+      });
+    }else{
+      hostShowQuestion(i+1);
+    }
+  });
+}
+
+/* ============================================================
+   7) OVLADAČ (TELEFON)
+   ============================================================ */
+const ctrlSub={join:"ctrl-join",wait:"ctrl-wait",buzz:"ctrl-buzz",result:"ctrl-result"};
+let myPid=null,myAnswer=null,myColor=AVATAR_COLORS[0],myAvatar=AVATARS[0],lastState="",lastQ=-1,ctrlTimerInt=null;
+
+function startController(){
+  show("screen-ctrl");
+  // zkontroluj, že místnost existuje
+  db.ref("rooms/"+ROOM+"/meta").once("value").then(s=>{
+    if(!s.exists()){sub(ctrlSub,"ctrl-join");$("ctrl-join").innerHTML='<div class="center"><div class="statusbig display">🚫</div><p>Tahle hra už neběží.<br>Naskenuj aktuální QR kód od hostitele.</p></div>';return;}
+    const meta=s.val();
+    buildJoinUI();
+    // reconnect: máme uloženého hráče?
+    const saved=localStorage.getItem("kviz_"+ROOM);
+    if(saved){
+      myPid=saved;
+      db.ref("rooms/"+ROOM+"/players/"+myPid).once("value").then(ps=>{
+        if(ps.exists()){
+          const p=ps.val();myColor=p.color;myAvatar=p.avatar;
+          db.ref("rooms/"+ROOM+"/players/"+myPid+"/connected").set(true);
+          db.ref("rooms/"+ROOM+"/players/"+myPid+"/connected").onDisconnect().set(false);
+          attachCtrlListener();
+        }else{sub(ctrlSub,"ctrl-join");}
+      });
+    }else{
+      if(meta.started){ // hra už běží – pozdní příchozí
+        sub(ctrlSub,"ctrl-join");
+        $("ctrl-join").querySelector(".eyebrow").textContent="hra už běží – připoj se na další";
+      }else{
+        sub(ctrlSub,"ctrl-join");
+      }
+    }
+  });
+}
+
+// barva pro žebříček se dopočítá z emoji (deterministicky)
+function colorForEmoji(e){ let h=0; for(const ch of (e||"?")) h=(h*31+ch.codePointAt(0))>>>0; return AVATAR_COLORS[h%AVATAR_COLORS.length]; }
+
+function buildJoinUI(){
+  const eb=$("c-emoji");eb.innerHTML="";
+  AVATARS.forEach(e=>{
+    const b=document.createElement("button");b.className="emoji-opt";b.dataset.emoji=e;b.textContent=e;
+    b.onclick=()=>{ if(b.classList.contains("taken"))return; myAvatar=e; myColor=colorForEmoji(e);
+      document.querySelectorAll("#c-emoji .emoji-opt").forEach(x=>x.classList.remove("sel")); b.classList.add("sel"); };
+    eb.appendChild(b);
+  });
+  selectFirstFree();
+  // živě hlídej, které obrázky už někdo zabral
+  db.ref("rooms/"+ROOM+"/players").on("value",snap=>{
+    const players=snap.val()||{};
+    const taken=new Set(Object.entries(players).filter(([pid])=>pid!==myPid).map(([,p])=>p.avatar));
+    document.querySelectorAll("#c-emoji .emoji-opt").forEach(b=>{
+      const isTaken=taken.has(b.dataset.emoji);
+      b.classList.toggle("taken",isTaken); b.disabled=isTaken;
+      if(isTaken&&b.classList.contains("sel")){ b.classList.remove("sel"); myAvatar=null; }
+    });
+    if(!myAvatar) selectFirstFree();
+  });
+}
+function selectFirstFree(){
+  const opts=[...document.querySelectorAll("#c-emoji .emoji-opt")];
+  const free=opts.find(b=>!b.classList.contains("taken"));
+  opts.forEach(x=>x.classList.remove("sel"));
+  if(free){ free.classList.add("sel"); myAvatar=free.dataset.emoji; myColor=colorForEmoji(myAvatar); }
+  else { myAvatar=null; }
+}
+
+function joinGame(){
+  const name=($("c-name").value||"").trim()||"Hráč";
+  if(!myAvatar){ toast("Vyber si obrázek"); return; }
+  // pojistka: ještě jednou ověř, že obrázek není obsazený
+  db.ref("rooms/"+ROOM+"/players").once("value").then(s=>{
+    const players=s.val()||{};
+    if(Object.values(players).some(p=>p.avatar===myAvatar)){ toast("Tenhle obrázek už někdo má, vyber jiný"); return; }
+    db.ref("rooms/"+ROOM+"/players").off();   // odpoj hlídač výběru
+    myPid=uid();
+    localStorage.setItem("kviz_"+ROOM,myPid);
+    const pref=db.ref("rooms/"+ROOM+"/players/"+myPid);
+    pref.set({name:name,avatar:myAvatar,color:myColor,score:0,connected:true});
+    pref.child("connected").onDisconnect().set(false);
+    $("c-wait-emoji").textContent=myAvatar;
+    attachCtrlListener();
+  });
+}
+
+let heartbeatInt=null;
+function startHeartbeat(){
+  if(!myPid||heartbeatInt)return;
+  const ref=db.ref("rooms/"+ROOM+"/players/"+myPid);
+  const beat=()=>ref.update({connected:true,lastSeen:firebase.database.ServerValue.TIMESTAMP});
+  beat();
+  heartbeatInt=setInterval(beat,5000);
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden) beat(); });
+}
+
+function ensureQuiz(cb){
+  if(gameQ&&gameQ.length){ cb(); return; }
+  db.ref("rooms/"+ROOM+"/quiz").once("value").then(s=>{ if(s.val())gameQ=s.val(); cb(); });
+}
+
+function attachCtrlListener(){
+  startHeartbeat();
+  // načti náhodný výběr otázek pro tuto hru (sdílený z TV)
+  db.ref("rooms/"+ROOM+"/quiz").on("value",s=>{ if(s.val()) gameQ=s.val(); });
+  db.ref("rooms/"+ROOM+"/meta").on("value",snap=>{
+    const m=snap.val();if(!m)return;
+    ctrlRender(m);
+  });
+}
+
+function ctrlRender(m){
+  // konec
+  if(m.state==="finished"){ ensureQuiz(()=>renderCtrlResult(m,true)); return; }
+  // lobby / čekání
+  if(m.state==="lobby"||(m.state!=="question"&&m.state!=="reveal")){sub(ctrlSub,"ctrl-wait");return;}
+
+  // pro otázku/reveal potřebujeme znát výběr otázek
+  if((m.state==="question"||m.state==="reveal") && !(gameQ&&gameQ.length)){
+    sub(ctrlSub,"ctrl-wait");
+    ensureQuiz(()=>ctrlRender(m));
+    return;
+  }
+
+  if(m.state==="question"){
+    if(m.locked){ // čte se, ještě nelze
+      if(myAnswer!==null&&m.qIndex===lastQ){return;} // už odpovězeno, počkej
+      sub(ctrlSub,"ctrl-wait");$("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Připrav se…";
+      return;
+    }
+    // nová otázka -> reset
+    if(m.qIndex!==lastQ){lastQ=m.qIndex;myAnswer=null;buildBuzz(m.qIndex);}
+    if(myAnswer!==null){showLocked();return;}
+    sub(ctrlSub,"ctrl-buzz");
+    startCtrlTimer(m.deadline);
+    updateRank();
+    return;
+  }
+
+  if(m.state==="reveal"){
+    clearInterval(ctrlTimerInt);
+    renderCtrlResult(m,false);
+  }
+}
+
+function buildBuzz(qi){
+  const Q=getQ(qi);
+  $("c-qtext").textContent=Q.q;
+  const box=$("c-buzz");box.innerHTML="";
+  Q.a.forEach((txt,idx)=>{
+    const b=document.createElement("button");b.className="buzz c"+idx;
+    b.innerHTML='<span class="shape">'+SHAPES[idx]+'</span><span>'+escapeHtml(txt)+'</span>';
+    b.onclick=()=>sendAnswer(qi,idx);
+    box.appendChild(b);
+  });
+}
+
+function sendAnswer(qi,idx){
+  if(myAnswer!==null)return;
+  myAnswer=idx;
+  db.ref("rooms/"+ROOM+"/answers/"+qi+"/"+myPid).set(idx);
+  sndBuzz();
+  if(navigator.vibrate)navigator.vibrate(40);
+  showLocked();
+}
+
+function showLocked(){
+  sub(ctrlSub,"ctrl-result");
+  $("c-result-big").className="statusbig display";
+  $("c-result-big").textContent="Zamčeno ✓";
+  $("c-result-sub").textContent="Sleduj velkou obrazovku…";
+  $("c-myscore").textContent="";
+}
+
+function startCtrlTimer(deadline){
+  clearInterval(ctrlTimerInt);
+  function tick(){const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));$("c-timer").textContent=left;if(left<=0)clearInterval(ctrlTimerInt);}
+  tick();ctrlTimerInt=setInterval(tick,250);
+}
+
+function updateRank(){
+  db.ref("rooms/"+ROOM+"/players").once("value").then(s=>{
+    const players=s.val()||{};
+    const arr=Object.entries(players).map(([pid,p])=>({pid,score:p.score||0}));
+    arr.sort((a,b)=>b.score-a.score);
+    const pos=arr.findIndex(x=>x.pid===myPid)+1;
+    $("c-rank").textContent=pos+". místo / "+arr.length;
+  });
+}
+
+function renderCtrlResult(m,finished){
+  sub(ctrlSub,"ctrl-result");
+  const qi=m.qIndex;const Q=getQ(qi);
+  db.ref("rooms/"+ROOM+"/players").once("value").then(s=>{
+    const players=s.val()||{};
+    const me=players[myPid]||{score:0};
+    const arr=Object.entries(players).map(([pid,p])=>({pid,...p,score:p.score||0}));
+    arr.sort((a,b)=>b.score-a.score);
+    const pos=arr.findIndex(x=>x.pid===myPid)+1;
+
+    if(finished){
+      const win=arr[0];
+      $("c-result-big").className="statusbig display";
+      $("c-result-big").innerHTML=(win&&win.pid===myPid)?"👑 Vyhrál jsi!":"Konec hry";
+      $("c-result-sub").textContent=pos+". místo z "+arr.length;
+      $("c-myscore").textContent=me.score+" b.";
+      renderPersonalBoard($("c-board"),players);
+      return;
+    }
+    const correct=(myAnswer===Q.correct);
+    $("c-result-big").className="statusbig display "+(correct?"result-ok":"result-no");
+    $("c-result-big").textContent=correct?"✓ Správně!":(myAnswer===null?"⏱ Nestihl jsi":"✗ Špatně");
+    $("c-result-sub").textContent="Správně bylo: "+Q.a[Q.correct]+"  •  "+pos+". místo";
+    $("c-myscore").textContent=me.score+" b.";
+    renderPersonalBoard($("c-board"),players);
+  });
+}
+</script>
+</body>
+</html>
