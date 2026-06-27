@@ -103,6 +103,17 @@ button{font-family:inherit;cursor:pointer;border:none;color:inherit}
 .buzz.c0{background:var(--c0)}.buzz.c1{background:var(--c1)}.buzz.c2{background:var(--c2)}.buzz.c3{background:var(--c3)}
 .buzz:disabled{opacity:.35;filter:saturate(.4)}
 
+/* ---------- AUTO-ADVANCE COUNTDOWN ---------- */
+.auto-bar-wrap{width:100%;max-width:760px;margin:0 auto;display:flex;align-items:center;gap:14px}
+.auto-bar-track{flex:1;height:10px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden}
+.auto-bar-fill{height:100%;background:var(--gold);border-radius:999px;transition:width .25s linear;width:100%}
+.auto-bar-label{font-family:'Baloo 2';font-weight:700;font-size:20px;color:var(--gold);min-width:2em;text-align:right}
+.btn-pause{font-family:'Baloo 2';font-weight:600;font-size:clamp(15px,3vw,20px);
+  background:var(--panel);color:var(--ink);border-radius:14px;padding:12px 22px;
+  box-shadow:0 5px 0 rgba(0,0,0,.28);border:1px solid var(--panel-bd);
+  transition:transform .08s,box-shadow .08s;white-space:nowrap}
+.btn-pause:active{transform:translateY(4px);box-shadow:0 1px 0 rgba(0,0,0,.28)}
+
 /* ---------- ŽEBŘÍČEK ---------- */
 .board{display:flex;flex-direction:column;gap:10px;width:100%;max-width:760px;margin:0 auto;max-height:62dvh;overflow-y:auto;scrollbar-width:none}
 .board::-webkit-scrollbar{display:none}
@@ -187,7 +198,13 @@ input.txt:focus{outline:none;border-color:var(--gold)}
     <div class="display" id="b-title" style="font-size:clamp(26px,5.5vw,46px);color:var(--gold)">průběžné pořadí</div>
     <div class="board" id="b-board"></div>
     <div id="b-fact" class="hidden" style="max-width:760px;color:var(--ink);background:rgba(255,210,63,.12);border:1px solid rgba(255,210,63,.35);border-radius:14px;padding:12px 18px;font-weight:600;font-size:clamp(15px,2.6vw,20px)"></div>
-    <button id="b-continue" class="btn" style="width:min(420px,90vw)" onclick="hostNext()">Další otázka →</button>
+    <!-- auto-advance countdown bar -->
+    <div id="b-autobar" class="auto-bar-wrap hidden">
+      <div class="auto-bar-track"><div class="auto-bar-fill" id="b-autobar-fill"></div></div>
+      <div class="auto-bar-label" id="b-autobar-label">10</div>
+      <button class="btn-pause" id="b-pause-btn" onclick="toggleBoardPause()">⏸ Pauza</button>
+    </div>
+    <button id="b-continue" class="btn" style="width:min(420px,90vw)" onclick="hostNextManual()">Další otázka →</button>
   </div>
 </div>
 
@@ -793,6 +810,7 @@ function startGame(){
 
 function hostShowQuestion(i){
   clearInterval(timerInt);
+  clearAutoAdvance();
   cancelBoardScroll();
   const Q=getQ(i);
   sub(hostSub,"host-question");
@@ -928,6 +946,7 @@ function showBoard(i){
   $("b-continue").textContent=last?"Hrát znovu":"Další otázka →";
   const factEl=$("b-fact"); factEl.classList.add("hidden"); factEl.textContent="";
   if(last){
+    clearAutoAdvance();
     db.ref("rooms/"+ROOM+"/meta").update({state:"finished"});
     renderFinalPodium($("b-board"));
   }else{
@@ -938,6 +957,8 @@ function showBoard(i){
       factEl.textContent="💡 "+f; factEl.classList.remove("hidden");
       setTimeout(()=>speak(f),700);
     }
+    // spusť odpočet k další otázce (po chvilce ať žebříček stihne dojet)
+    setTimeout(()=>startAutoAdvance(false), 1200);
   }
 }
 
@@ -1073,7 +1094,65 @@ function renderPersonalBoard(container,players){
   });
 }
 
-function hostNext(){
+/* ============================================================
+   AUTO-ADVANCE COUNTDOWN (tabule → další otázka)
+   ============================================================ */
+const AUTO_ADVANCE_SECS = 10;   // kolik sekund čekat na tabuli
+let autoAdvanceInt = null;
+let autoAdvancePaused = false;
+let autoAdvanceLeft = AUTO_ADVANCE_SECS;
+
+function startAutoAdvance(isLast) {
+  clearAutoAdvance();
+  if (isLast) return;                   // na konci hry nespouštět
+  autoAdvancePaused = false;
+  autoAdvanceLeft = AUTO_ADVANCE_SECS;
+  const barEl = $("b-autobar");
+  const fillEl = $("b-autobar-fill");
+  const labelEl = $("b-autobar-label");
+  const pauseBtn = $("b-pause-btn");
+  barEl.classList.remove("hidden");
+  pauseBtn.textContent = "⏸ Pauza";
+  labelEl.textContent = autoAdvanceLeft;
+  fillEl.style.width = "100%";
+
+  autoAdvanceInt = setInterval(() => {
+    if (autoAdvancePaused) return;
+    autoAdvanceLeft = Math.max(0, autoAdvanceLeft - 0.25);
+    const pct = (autoAdvanceLeft / AUTO_ADVANCE_SECS) * 100;
+    fillEl.style.width = pct + "%";
+    labelEl.textContent = Math.ceil(autoAdvanceLeft);
+    if (autoAdvanceLeft <= 0) {
+      clearAutoAdvance();
+      hostNext();
+    }
+  }, 250);
+}
+
+function clearAutoAdvance() {
+  clearInterval(autoAdvanceInt);
+  autoAdvanceInt = null;
+  autoAdvancePaused = false;
+  const barEl = $("b-autobar");
+  if (barEl) barEl.classList.add("hidden");
+}
+
+function toggleBoardPause() {
+  autoAdvancePaused = !autoAdvancePaused;
+  const btn = $("b-pause-btn");
+  if (autoAdvancePaused) {
+    btn.textContent = "▶ Pokračovat";
+  } else {
+    btn.textContent = "⏸ Pauza";
+  }
+}
+
+function hostNextManual() {
+  clearAutoAdvance();
+  hostNext();
+}
+
+
   db.ref("rooms/"+ROOM+"/meta/qIndex").once("value").then(s=>{
     const i=s.val();
     if(i>=gameLen()-1){
@@ -1310,6 +1389,6 @@ function renderCtrlResult(m,finished){
   });
 }
 </script>
-<div id="ver" style="position:fixed;right:8px;bottom:6px;z-index:9999;font-size:11px;color:rgba(255,255,255,.35);font-family:monospace;pointer-events:none">v13</div>
+<div id="ver" style="position:fixed;right:8px;bottom:6px;z-index:9999;font-size:11px;color:rgba(255,255,255,.35);font-family:monospace;pointer-events:none">v14</div>
 </body>
 </html>
