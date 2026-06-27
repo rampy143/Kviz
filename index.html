@@ -842,24 +842,22 @@ function hostShowQuestion(i){
   unlockFallbackTimer=setTimeout(()=>hostUnlock(i),12000);
 }
 
-// přečte text a zavolá cb až po SKUTEČNÉM dočtení (hlídá speechSynthesis.speaking)
+// přečte text a zavolá cb až po SKUTEČNÉM dočtení
 function readThenUnlock(text,cb){
   if(!SETTINGS.readAloud||!("speechSynthesis"in window)){ setTimeout(cb,400); return; }
-  let done=false,started=false,t=0,iv=null;
-  const fire=()=>{ if(done)return; done=true; if(iv)clearInterval(iv); cb(); };
+  let done=false;
+  const fire=()=>{ if(done)return; done=true; cb(); };
   try{
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
     u.lang=(voiceCS&&voiceCS.lang)||"cs-CZ"; if(voiceCS)u.voice=voiceCS; u.rate=SETTINGS.speechRate; u.pitch=1; u.volume=1;
-    u.onend=fire; u.onerror=fire;
+    // onend + 600ms buffer (prohlížeče občas vystřelí onend dřív než skončí zvuk)
+    u.onend=()=>setTimeout(fire, 600);
+    u.onerror=fire;
     speechSynthesis.speak(u);
-    iv=setInterval(()=>{
-      t+=150;
-      if(speechSynthesis.speaking) started=true;
-      if(started && !speechSynthesis.speaking) return fire(); // dočteno
-      if(!started && t>2500) return fire();                   // čtení nenaběhlo
-      if(t>22000) return fire();                              // tvrdá pojistka
-    },150);
+    // tvrdá pojistka podle délky textu
+    const est=Math.min(35000, 3000+text.length*95);
+    setTimeout(fire, est);
   }catch(e){ fire(); }
 }
 
