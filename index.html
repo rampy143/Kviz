@@ -632,7 +632,10 @@ function randCode(){const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(let 
 function uid(){return "p"+Math.random().toString(36).slice(2,9);}
 
 // náhodný výběr otázek do hry (sdílený mezi TV a telefony přes Firebase)
-let gameQ=[]; // pole indexů do QUESTIONS pro tuto hru
+// Odpovědi jsou v datech skoro vždy na pozici 1 (oranžová).
+// Při výběru otázek jim přiřadíme náhodný offset rotace a uložíme ho spolu s indexem.
+// gameQ = pole objektů { qi, rot } místo pouhých čísel.
+let gameQ=[]; // pole { qi, rot }
 function shuffleArr(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function pickGameQuestions(){
   const n=Math.min(SETTINGS.questionsPerGame, QUESTIONS.length);
@@ -656,9 +659,23 @@ function pickGameQuestions(){
   }
   let chosen=shuffleArr(picked).slice(0,n); // zamíchat, ať nejdou po tématech
   if(SETTINGS.rampDifficulty){ chosen=chosen.slice().sort((a,b)=>((QUESTIONS[a].d||2)-(QUESTIONS[b].d||2))); }
-  return chosen;
+  // přiřaď rotaci tak, aby se správné odpovědi rovnoměrně střídaly mezi 4 barvami
+  return chosen.map((qi)=>({ qi, rot: Math.floor(Math.random()*4) }));
 }
-function getQ(i){ const idx=(gameQ&&gameQ[i]!==undefined)?gameQ[i]:i; return QUESTIONS[idx]; }
+// Vrátí otázku s přeházeným pořadím odpovědí podle rot (0–3).
+// Výsledný objekt má stejnou strukturu jako QUESTIONS[i], ale a[] a correct jsou rotované.
+function getQ(i){
+  const entry = (gameQ && gameQ[i] !== undefined) ? gameQ[i] : { qi: i, rot: 0 };
+  const raw = QUESTIONS[entry.qi !== undefined ? entry.qi : entry];
+  if(!raw) return raw;
+  const rot = entry.rot || 0;
+  if(rot === 0) return raw;
+  // rotuj odpovědi: odpověď na pozici k jde na pozici (k + rot) % 4
+  const newA = Array(4);
+  raw.a.forEach((txt, k) => { newA[(k + rot) % 4] = txt; });
+  const newCorrect = (raw.correct + rot) % 4;
+  return { ...raw, a: newA, correct: newCorrect };
+}
 function gameLen(){ return (gameQ&&gameQ.length)?gameQ.length:Math.min(SETTINGS.questionsPerGame,QUESTIONS.length); }
 
 /* čtení nahlas – jen TV */
@@ -836,10 +853,11 @@ function hostShowQuestion(i){
   // přečti otázku + odpovědi, pak odemkni a spusť odpočet
   questionUnlocked=false;
   const speech=Q.q+". Možnosti: "+Q.a.map((t,k)=>COLOR_NAMES[k]+": "+t).join(", ")+".";
-  readThenUnlock(speech,()=>hostUnlock(i));
-  // tvrdá pojistka, kdyby cokoli selhalo
+  // tvrdá pojistka = odhad délky čtení + rezerva 3s (resetuje se z readThenUnlock při onend)
+  const estMs = Math.min(40000, 4000 + speech.length * 100);
   clearTimeout(unlockFallbackTimer);
-  unlockFallbackTimer=setTimeout(()=>hostUnlock(i),12000);
+  unlockFallbackTimer = setTimeout(()=>hostUnlock(i), estMs);
+  readThenUnlock(speech,()=>{ clearTimeout(unlockFallbackTimer); hostUnlock(i); });
 }
 
 // přečte text a zavolá cb až po SKUTEČNÉM dočtení
@@ -851,13 +869,11 @@ function readThenUnlock(text,cb){
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
     u.lang=(voiceCS&&voiceCS.lang)||"cs-CZ"; if(voiceCS)u.voice=voiceCS; u.rate=SETTINGS.speechRate; u.pitch=1; u.volume=1;
-    // onend + 600ms buffer (prohlížeče občas vystřelí onend dřív než skončí zvuk)
-    u.onend=()=>setTimeout(fire, 600);
+    // onend + 900ms buffer — prohlížeče (zvl. Chrome) často vystřelí onend 1–2 slova před koncem
+    u.onend=()=>setTimeout(fire, 900);
     u.onerror=fire;
     speechSynthesis.speak(u);
-    // tvrdá pojistka podle délky textu
-    const est=Math.min(35000, 3000+text.length*95);
-    setTimeout(fire, est);
+    // POZOR: žádný interní timeout tady — volající si spravuje fallback sám
   }catch(e){ fire(); }
 }
 
@@ -1388,6 +1404,6 @@ function renderCtrlResult(m,finished){
   });
 }
 </script>
-<div id="ver" style="position:fixed;right:8px;bottom:6px;z-index:9999;font-size:11px;color:rgba(255,255,255,.35);font-family:monospace;pointer-events:none">v14</div>
+<div id="ver" style="position:fixed;right:8px;bottom:6px;z-index:9999;font-size:11px;color:rgba(255,255,255,.35);font-family:monospace;pointer-events:none">v16</div>
 </body>
 </html>
