@@ -646,42 +646,52 @@ function gameLen(){ return (gameQ&&gameQ.length)?gameQ.length:Math.min(SETTINGS.
 
 /* čtení nahlas – jen TV */
 let voiceCS=null;
+function scoreVoice(x){
+  const n=(x.name||"").toLowerCase(); let s=0;
+  if(/natural|neural|online/.test(n)) s+=60;   // moderní neuronové hlasy
+  if(n.includes("google"))            s+=45;
+  if(n.includes("microsoft"))         s+=25;
+  if(/vlasta|jakub|iveta|zuzana/.test(n)) s+=15; // známé kvalitní české hlasy
+  if(!x.localService)                 s+=10;   // cloudové bývají přirozenější
+  if(/espeak|e-speak|compact|robot/.test(n)) s-=80; // robotické – až úplně nakonec
+  return s;
+}
+function isCzech(x){ const l=(x.lang||"").toLowerCase(); return l.startsWith("cs")||l.startsWith("sk"); }
+// české hlasy seřazené od nejpřirozenějšího – pro automatickou volbu
 function csVoices(){
   const all=speechSynthesis.getVoices();
-  let v=all.filter(x=>x.lang&&x.lang.toLowerCase().startsWith("cs"));
-  if(!v.length) v=all.filter(x=>x.lang&&x.lang.toLowerCase().startsWith("sk"));
-  if(!v.length) v=all.slice(); // úplná nouze: cokoli
-  const score=(x)=>{
-    const n=(x.name||"").toLowerCase(); let s=0;
-    if(/natural|neural|online/.test(n)) s+=60;   // moderní neuronové hlasy
-    if(n.includes("google"))            s+=45;
-    if(n.includes("microsoft"))         s+=25;
-    if(/vlasta|jakub|iveta|zuzana/.test(n)) s+=15; // známé kvalitní české hlasy
-    if(!x.localService)                 s+=10;   // cloudové bývají lepší než lokální
-    if(/espeak|e-speak|compact|robot/.test(n)) s-=80; // robotické – až úplně nakonec
-    return s;
-  };
-  return v.sort((a,b)=>score(b)-score(a));
+  let v=all.filter(isCzech);
+  if(!v.length) v=all.slice(); // nouze: žádný český hlas
+  return v.sort((a,b)=>scoreVoice(b)-scoreVoice(a));
 }
+// VŠECHNY hlasy v zařízení (české první) – pro nabídku k výběru
+function allVoices(){
+  const all=speechSynthesis.getVoices().slice();
+  const cz=all.filter(isCzech).sort((a,b)=>scoreVoice(b)-scoreVoice(a));
+  const rest=all.filter(x=>!isCzech(x)).sort((a,b)=>scoreVoice(b)-scoreVoice(a));
+  return {cz,rest};
+}
+function findVoice(name){ return speechSynthesis.getVoices().find(x=>x.name===name)||null; }
 function pickVoice(){
   const v=csVoices();
-  if(!v.length){ voiceCS=null; fillVoiceMenu(); return; }
-  // respektuj uložený výběr, jinak vezmi nejlepší automaticky
+  // respektuj uložený výběr, jinak vezmi nejlepší český automaticky
   let saved=null; try{ saved=localStorage.getItem("kviz_voice"); }catch(e){}
-  voiceCS = (saved && v.find(x=>x.name===saved)) || v[0];
+  voiceCS = (saved && findVoice(saved)) || v[0] || null;
   fillVoiceMenu();
 }
 function fillVoiceMenu(){
   const sel=document.getElementById("voiceSel"); if(!sel)return;
-  const v=csVoices(); sel.innerHTML="";
-  if(!v.length){ sel.innerHTML='<option>žádný hlas v zařízení</option>'; return; }
-  v.forEach(x=>{ const o=document.createElement("option"); o.value=x.name;
+  const {cz,rest}=allVoices(); sel.innerHTML="";
+  if(!cz.length && !rest.length){ sel.innerHTML='<option>žádný hlas v zařízení</option>'; return; }
+  const addOpt=(parent,x)=>{ const o=document.createElement("option"); o.value=x.name;
     o.textContent=x.name+" ("+x.lang+")"+(x.localService?"":" ☁"); 
-    if(voiceCS&&x.name===voiceCS.name)o.selected=true; sel.appendChild(o); });
+    if(voiceCS&&x.name===voiceCS.name)o.selected=true; parent.appendChild(o); };
+  if(cz.length){ const g=document.createElement("optgroup"); g.label="Čeština / Slovenština"; cz.forEach(x=>addOpt(g,x)); sel.appendChild(g); }
+  if(rest.length){ const g=document.createElement("optgroup"); g.label="Ostatní hlasy (nemusí umět česky)"; rest.forEach(x=>addOpt(g,x)); sel.appendChild(g); }
 }
 function onVoicePick(){
   const sel=document.getElementById("voiceSel"); if(!sel)return;
-  const v=csVoices(); const chosen=v.find(x=>x.name===sel.value);
+  const chosen=findVoice(sel.value);
   if(chosen){ voiceCS=chosen; try{localStorage.setItem("kviz_voice",chosen.name);}catch(e){} testVoice(); }
 }
 function testVoice(){ speak("Ahoj, takhle budu číst otázky. První otázka za chvíli!"); }
