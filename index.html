@@ -754,7 +754,7 @@ function becomeHost(){
     $("qrbox").innerHTML="";
     new QRCode($("qrbox"),{text:url,width:240,height:240,colorDark:"#160a36",colorLight:"#ffffff"});
     // řekni nahlas, ať se hráči připojí telefonem přes QR (čte jen TV)
-    setTimeout(()=>speak("Vítejte u kvízu! Hra běží na téhle obrazovce. Vezměte si telefon, naskenujte QR kód, který vidíte, a zadejte jméno a vyberte si postavu. Až budete všichni připojení, spustíme hru."),800);
+    setTimeout(()=>speak("Vítejte u kvízu! Vezměte si telefon, naskenujte QR kód, který vidíte, a zadejte jméno a vyberte si postavu. Až budete všichni připojení, spustíme hru."),800);
     // poslouchej hráče
     db.ref("rooms/"+ROOM+"/players").on("value",snap=>{
       hostPlayers=snap.val()||{};
