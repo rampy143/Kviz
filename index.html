@@ -1153,6 +1153,7 @@ function hostNextManual() {
 }
 
 
+function hostNext(){
   db.ref("rooms/"+ROOM+"/meta/qIndex").once("value").then(s=>{
     const i=s.val();
     if(i>=gameLen()-1){
