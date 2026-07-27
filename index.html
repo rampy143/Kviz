@@ -73,7 +73,9 @@ button{font-family:inherit;cursor:pointer;border:none;color:inherit}
 /* ---------- OTÁZKA ---------- */
 .qhead{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%}
 .qcount{font-family:'Baloo 2';color:var(--muted);font-weight:600;font-size:clamp(14px,2.5vw,20px)}
-.timer{font-family:'Baloo 2';font-weight:700;font-size:clamp(34px,7vw,64px);color:var(--gold);min-width:1.6em;text-align:center}
+.timer{font-family:'Baloo 2';font-weight:700;font-size:clamp(34px,7vw,64px);color:var(--gold);min-width:1.6em;text-align:center;transition:color .2s}
+.timer.urgent{color:var(--c3);animation:timerPulse .5s infinite alternate}
+@keyframes timerPulse{from{transform:scale(1)}to{transform:scale(1.14)}}
 .qtext{font-family:'Baloo 2';font-weight:700;font-size:clamp(26px,5.5vw,60px);line-height:1.1;max-width:1100px;margin:8px auto}
 .qmedia{max-width:min(80vw,560px);max-height:42dvh;border-radius:18px;margin:6px auto;display:block}
 
@@ -92,6 +94,10 @@ button{font-family:inherit;cursor:pointer;border:none;color:inherit}
 .ans.dim{opacity:.28;filter:saturate(.4)}
 .ans.win{animation:winpulse .7s infinite alternate;outline:5px solid #fff}
 @keyframes winpulse{from{transform:scale(1)}to{transform:scale(1.04)}}
+.shake{animation:shake .5s}
+@keyframes shake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-8px)}40%,60%{transform:translateX(8px)}}
+.flash-ok::after{content:"";position:fixed;inset:0;background:radial-gradient(circle at 50% 40%,rgba(30,215,96,.35),transparent 60%);pointer-events:none;animation:flashFade .8s ease-out forwards;z-index:9997}
+@keyframes flashFade{from{opacity:1}to{opacity:0}}
 
 /* ovladač – velká buzz tlačítka */
 .buzzgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1;width:100%}
@@ -102,17 +108,6 @@ button{font-family:inherit;cursor:pointer;border:none;color:inherit}
 .buzz:active{transform:translateY(8px);box-shadow:0 2px 0 rgba(0,0,0,.32)}
 .buzz.c0{background:var(--c0)}.buzz.c1{background:var(--c1)}.buzz.c2{background:var(--c2)}.buzz.c3{background:var(--c3)}
 .buzz:disabled{opacity:.35;filter:saturate(.4)}
-
-/* ---------- AUTO-ADVANCE COUNTDOWN ---------- */
-.auto-bar-wrap{width:100%;max-width:760px;margin:0 auto;display:flex;align-items:center;gap:14px}
-.auto-bar-track{flex:1;height:10px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden}
-.auto-bar-fill{height:100%;background:var(--gold);border-radius:999px;transition:width .25s linear;width:100%}
-.auto-bar-label{font-family:'Baloo 2';font-weight:700;font-size:20px;color:var(--gold);min-width:2em;text-align:right}
-.btn-pause{font-family:'Baloo 2';font-weight:600;font-size:clamp(15px,3vw,20px);
-  background:var(--panel);color:var(--ink);border-radius:14px;padding:12px 22px;
-  box-shadow:0 5px 0 rgba(0,0,0,.28);border:1px solid var(--panel-bd);
-  transition:transform .08s,box-shadow .08s;white-space:nowrap}
-.btn-pause:active{transform:translateY(4px);box-shadow:0 1px 0 rgba(0,0,0,.28)}
 
 /* ---------- ŽEBŘÍČEK ---------- */
 .board{display:flex;flex-direction:column;gap:10px;width:100%;max-width:760px;margin:0 auto;max-height:62dvh;overflow-y:auto;scrollbar-width:none}
@@ -142,6 +137,18 @@ button{font-family:inherit;cursor:pointer;border:none;color:inherit}
 input.txt{width:100%;font-family:'Baloo 2';font-size:22px;padding:16px;border-radius:16px;background:rgba(0,0,0,.25);border:2px solid var(--panel-bd);color:var(--ink);text-align:center}
 input.txt:focus{outline:none;border-color:var(--gold)}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#000a;border:1px solid var(--panel-bd);padding:12px 20px;border-radius:999px;font-weight:700}
+
+/* plynulé přepínání obrazovek */
+@keyframes fadeInUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeInUp .4s cubic-bezier(.2,.8,.25,1) both}
+
+/* konfety */
+.confetti-piece{position:fixed;top:-20px;width:9px;height:15px;border-radius:2px;pointer-events:none;z-index:9998;animation:confettiFall linear forwards}
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(112vh) rotate(650deg);opacity:.85}}
+
+/* streak na telefonu */
+.streak{font-family:'Baloo 2';font-weight:700;color:var(--gold);font-size:clamp(16px,3.6vw,22px)}
+
 @media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 </style>
 </head>
@@ -177,6 +184,7 @@ input.txt:focus{outline:none;border-color:var(--gold)}
       <span>🔊 hlas:</span>
       <select id="voiceSel" onchange="onVoicePick()" style="background:var(--bg2);color:var(--ink);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:6px 8px;font-size:13px;max-width:60vw"></select>
       <button class="btn" style="padding:6px 12px;font-size:13px;width:auto" onclick="testVoice()">test</button>
+      <button id="musicBtn" class="btn ghost" style="padding:6px 12px;font-size:13px;width:auto" onclick="toggleMusic()">🎵 hudba: zapnutá</button>
     </div>
   </div>
 
@@ -198,13 +206,7 @@ input.txt:focus{outline:none;border-color:var(--gold)}
     <div class="display" id="b-title" style="font-size:clamp(26px,5.5vw,46px);color:var(--gold)">průběžné pořadí</div>
     <div class="board" id="b-board"></div>
     <div id="b-fact" class="hidden" style="max-width:760px;color:var(--ink);background:rgba(255,210,63,.12);border:1px solid rgba(255,210,63,.35);border-radius:14px;padding:12px 18px;font-weight:600;font-size:clamp(15px,2.6vw,20px)"></div>
-    <!-- auto-advance countdown bar -->
-    <div id="b-autobar" class="auto-bar-wrap hidden">
-      <div class="auto-bar-track"><div class="auto-bar-fill" id="b-autobar-fill"></div></div>
-      <div class="auto-bar-label" id="b-autobar-label">10</div>
-      <button class="btn-pause" id="b-pause-btn" onclick="toggleBoardPause()">⏸ Pauza</button>
-    </div>
-    <button id="b-continue" class="btn" style="width:min(420px,90vw)" onclick="hostNextManual()">Další otázka →</button>
+    <button id="b-continue" class="btn" style="width:min(420px,90vw)" onclick="hostNext()">Další otázka →</button>
   </div>
 </div>
 
@@ -242,6 +244,7 @@ input.txt:focus{outline:none;border-color:var(--gold)}
   <div id="ctrl-result" class="center hidden" style="overflow-y:auto;gap:14px;justify-content:flex-start;padding-top:18px">
     <div id="c-result-big" class="statusbig display"></div>
     <div id="c-result-sub" style="color:var(--muted)"></div>
+    <div id="c-streak" class="streak hidden"></div>
     <div class="myscore" id="c-myscore"></div>
     <div class="board" id="c-board" style="max-height:46dvh"></div>
   </div>
@@ -623,19 +626,37 @@ const AVATARS = ["🦊","🐼","🐸","🦄","🐲","🦁","🐙","👾","🤖",
    4) POMOCNÉ
    ============================================================ */
 const $=id=>document.getElementById(id);
-function show(id){["screen-landing","screen-host","screen-ctrl"].forEach(s=>$(s).classList.toggle("hidden",s!==id));}
+function playFadeIn(el){ if(!el)return; el.classList.remove("fade-in"); void el.offsetWidth; el.classList.add("fade-in"); }
+function show(id){["screen-landing","screen-host","screen-ctrl"].forEach(s=>$(s).classList.toggle("hidden",s!==id)); playFadeIn($(id)); }
 function sub(parent,active){ // přepínání podobrazovek
   Object.keys(parent).forEach(k=>$(parent[k]).classList.toggle("hidden",parent[k]!==active));
+  playFadeIn($(active));
+}
+
+/* konfety – bez závislosti na knihovnách */
+function confettiBurst(count){
+  count=count||60;
+  const colors=[COLORS[0],COLORS[1],COLORS[2],COLORS[3],"#ffd23f"];
+  for(let i=0;i<count;i++){
+    const el=document.createElement("div");
+    el.className="confetti-piece";
+    el.style.background=colors[Math.floor(Math.random()*colors.length)];
+    el.style.left=(Math.random()*100)+"vw";
+    el.style.width=(6+Math.random()*6)+"px";
+    el.style.height=(10+Math.random()*8)+"px";
+    const dur=2.2+Math.random()*1.4;
+    el.style.animationDuration=dur+"s";
+    el.style.animationDelay=(Math.random()*0.35)+"s";
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(),(dur+0.5)*1000+400);
+  }
 }
 function toast(msg){const t=$("toast");t.textContent=msg;t.classList.remove("hidden");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add("hidden"),2200);}
 function randCode(){const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(let i=0;i<4;i++)s+=A[Math.floor(Math.random()*A.length)];return s;}
 function uid(){return "p"+Math.random().toString(36).slice(2,9);}
 
 // náhodný výběr otázek do hry (sdílený mezi TV a telefony přes Firebase)
-// Odpovědi jsou v datech skoro vždy na pozici 1 (oranžová).
-// Při výběru otázek jim přiřadíme náhodný offset rotace a uložíme ho spolu s indexem.
-// gameQ = pole objektů { qi, rot } místo pouhých čísel.
-let gameQ=[]; // pole { qi, rot }
+let gameQ=[]; // pole indexů do QUESTIONS pro tuto hru
 function shuffleArr(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function pickGameQuestions(){
   const n=Math.min(SETTINGS.questionsPerGame, QUESTIONS.length);
@@ -659,23 +680,9 @@ function pickGameQuestions(){
   }
   let chosen=shuffleArr(picked).slice(0,n); // zamíchat, ať nejdou po tématech
   if(SETTINGS.rampDifficulty){ chosen=chosen.slice().sort((a,b)=>((QUESTIONS[a].d||2)-(QUESTIONS[b].d||2))); }
-  // přiřaď rotaci tak, aby se správné odpovědi rovnoměrně střídaly mezi 4 barvami
-  return chosen.map((qi)=>({ qi, rot: Math.floor(Math.random()*4) }));
+  return chosen;
 }
-// Vrátí otázku s přeházeným pořadím odpovědí podle rot (0–3).
-// Výsledný objekt má stejnou strukturu jako QUESTIONS[i], ale a[] a correct jsou rotované.
-function getQ(i){
-  const entry = (gameQ && gameQ[i] !== undefined) ? gameQ[i] : { qi: i, rot: 0 };
-  const raw = QUESTIONS[entry.qi !== undefined ? entry.qi : entry];
-  if(!raw) return raw;
-  const rot = entry.rot || 0;
-  if(rot === 0) return raw;
-  // rotuj odpovědi: odpověď na pozici k jde na pozici (k + rot) % 4
-  const newA = Array(4);
-  raw.a.forEach((txt, k) => { newA[(k + rot) % 4] = txt; });
-  const newCorrect = (raw.correct + rot) % 4;
-  return { ...raw, a: newA, correct: newCorrect };
-}
+function getQ(i){ const idx=(gameQ&&gameQ[i]!==undefined)?gameQ[i]:i; return QUESTIONS[idx]; }
 function gameLen(){ return (gameQ&&gameQ.length)?gameQ.length:Math.min(SETTINGS.questionsPerGame,QUESTIONS.length); }
 
 /* čtení nahlas – jen TV */
@@ -745,12 +752,69 @@ function speak(text,cb){
   }catch(e){ fire(); }
 }
 
-/* jednoduché zvuky (Web Audio) */
+/* ============================================================
+   ZVUKY A HUDBA (Web Audio) — bez externích souborů
+   ============================================================ */
 let actx=null;
-function beep(freq,dur,type){try{if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();const o=actx.createOscillator(),g=actx.createGain();o.type=type||"square";o.frequency.value=freq;o.connect(g);g.connect(actx.destination);g.gain.setValueAtTime(.15,actx.currentTime);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+dur);o.start();o.stop(actx.currentTime+dur);}catch(e){}}
-function sndBuzz(){beep(440,.12,"square");}
-function sndCorrect(){beep(660,.1);setTimeout(()=>beep(880,.18),90);}
-function sndTick(){beep(300,.04,"sine");}
+let musicOn=true;
+try{ musicOn = localStorage.getItem("kviz_music")!=="off"; }catch(e){}
+function ensureAudio(){ if(!actx){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}} return actx; }
+function beep(freq,dur,type,vol,delay){
+  try{
+    ensureAudio(); if(!actx) return;
+    const t0=actx.currentTime+(delay||0);
+    const o=actx.createOscillator(),g=actx.createGain();
+    o.type=type||"square";o.frequency.setValueAtTime(freq,t0);
+    o.connect(g);g.connect(actx.destination);
+    g.gain.setValueAtTime(0,t0);
+    g.gain.linearRampToValueAtTime(vol!==undefined?vol:.15,t0+.01);
+    g.gain.exponentialRampToValueAtTime(.001,t0+dur);
+    o.start(t0);o.stop(t0+dur+.02);
+  }catch(e){}
+}
+function notes(seq,type,vol){ seq.forEach(n=>beep(n[0],n[1],type,vol,n[2]||0)); }
+
+function sndBuzz(){beep(440,.1,"square",.14);}
+function sndCorrect(){notes([[660,.1,0],[880,.2,.09]],"sine",.16);}
+function sndWrong(){notes([[300,.16,0],[220,.22,.09]],"sawtooth",.12);}
+function sndTimeout(){beep(260,.25,"sine",.1);}
+function sndTick(){beep(300,.04,"sine",.12);}
+function sndVictory(){
+  notes([[523,.14,0],[659,.14,.14],[784,.14,.28],[1047,.4,.42]],"triangle",.17);
+}
+
+/* jemná hudba v lobby, dokud se čeká na hráče */
+let lobbyMusicTimer=null,lobbyMusicStep=0;
+const LOBBY_MOTIF=[392,440,523,440,392,330,392,523];
+function startLobbyMusic(){
+  stopLobbyMusic();
+  if(!musicOn)return;
+  lobbyMusicStep=0;
+  const tick=()=>{
+    const f=LOBBY_MOTIF[lobbyMusicStep%LOBBY_MOTIF.length];
+    beep(f,.5,"sine",.045);
+    beep(f/2,.5,"triangle",.03);
+    lobbyMusicStep++;
+  };
+  tick();
+  lobbyMusicTimer=setInterval(tick,650);
+}
+function stopLobbyMusic(){ if(lobbyMusicTimer){clearInterval(lobbyMusicTimer);lobbyMusicTimer=null;} }
+
+/* jemný "napínavý" tep během odpočtu na odpověď, zrychluje se blížícím koncem */
+function tensionPulse(secLeft,secTotal){
+  if(!musicOn)return;
+  const urgent = secLeft<=5;
+  beep(urgent?150:110, urgent?.08:.12, "sine", urgent?.05:.03);
+}
+
+function toggleMusic(){
+  musicOn=!musicOn;
+  try{localStorage.setItem("kviz_music",musicOn?"on":"off");}catch(e){}
+  const b=$("musicBtn"); if(b) b.textContent="🎵 hudba: "+(musicOn?"zapnutá":"vypnutá");
+  if(musicOn){ if($("host-lobby")&&!$("host-lobby").classList.contains("hidden")) startLobbyMusic(); }
+  else stopLobbyMusic();
+}
 
 /* ============================================================
    5) ROUTOVÁNÍ ROLÍ
@@ -774,11 +838,13 @@ let questionUnlockTime=0, answerArrival={};   // měření rychlosti odpovědí 
 let prevStandings=[], prevScores={}, boardScrollAnim=null;
 
 function becomeHost(){
-  if(actx===null){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  ensureAudio();
   speak(" "); // odemkne hlas (potřebuje kliknutí)
   setTimeout(fillVoiceMenu,300); // naplň nabídku hlasů (po načtení hlasů)
+  const mb=$("musicBtn"); if(mb) mb.textContent="🎵 hudba: "+(musicOn?"zapnutá":"vypnutá");
   ROOM=randCode();
   show("screen-host");sub(hostSub,"host-lobby");
+  startLobbyMusic();
   const base={
     meta:{ state:"lobby", started:false, qIndex:-1, locked:true, deadline:0, total:Math.min(SETTINGS.questionsPerGame,QUESTIONS.length) },
   };
@@ -814,6 +880,7 @@ function escapeHtml(s){return (s+"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt
 
 function startGame(){
   if(Object.keys(hostPlayers).length===0){ toast("Připoj nejdřív aspoň jednoho hráče"); return; }
+  stopLobbyMusic();
   prevStandings=[]; prevScores={};
   gameQ=pickGameQuestions();   // náhodný výběr otázek pro tuto hru
   db.ref("rooms/"+ROOM+"/quiz").set(gameQ);   // sdílej s telefony
@@ -827,7 +894,6 @@ function startGame(){
 
 function hostShowQuestion(i){
   clearInterval(timerInt);
-  clearAutoAdvance();
   cancelBoardScroll();
   const Q=getQ(i);
   sub(hostSub,"host-question");
@@ -853,27 +919,30 @@ function hostShowQuestion(i){
   // přečti otázku + odpovědi, pak odemkni a spusť odpočet
   questionUnlocked=false;
   const speech=Q.q+". Možnosti: "+Q.a.map((t,k)=>COLOR_NAMES[k]+": "+t).join(", ")+".";
-  // tvrdá pojistka = odhad délky čtení + rezerva 3s (resetuje se z readThenUnlock při onend)
-  const estMs = Math.min(40000, 4000 + speech.length * 100);
+  readThenUnlock(speech,()=>hostUnlock(i));
+  // tvrdá pojistka, kdyby cokoli selhalo
   clearTimeout(unlockFallbackTimer);
-  unlockFallbackTimer = setTimeout(()=>hostUnlock(i), estMs);
-  readThenUnlock(speech,()=>{ clearTimeout(unlockFallbackTimer); hostUnlock(i); });
+  unlockFallbackTimer=setTimeout(()=>hostUnlock(i),12000);
 }
 
-// přečte text a zavolá cb až po SKUTEČNÉM dočtení
+// přečte text a zavolá cb až po SKUTEČNÉM dočtení (hlídá speechSynthesis.speaking)
 function readThenUnlock(text,cb){
   if(!SETTINGS.readAloud||!("speechSynthesis"in window)){ setTimeout(cb,400); return; }
-  let done=false;
-  const fire=()=>{ if(done)return; done=true; cb(); };
+  let done=false,started=false,t=0,iv=null;
+  const fire=()=>{ if(done)return; done=true; if(iv)clearInterval(iv); cb(); };
   try{
     speechSynthesis.cancel();
     const u=new SpeechSynthesisUtterance(text);
     u.lang=(voiceCS&&voiceCS.lang)||"cs-CZ"; if(voiceCS)u.voice=voiceCS; u.rate=SETTINGS.speechRate; u.pitch=1; u.volume=1;
-    // onend + 900ms buffer — prohlížeče (zvl. Chrome) často vystřelí onend 1–2 slova před koncem
-    u.onend=()=>setTimeout(fire, 900);
-    u.onerror=fire;
+    u.onend=fire; u.onerror=fire;
     speechSynthesis.speak(u);
-    // POZOR: žádný interní timeout tady — volající si spravuje fallback sám
+    iv=setInterval(()=>{
+      t+=150;
+      if(speechSynthesis.speaking) started=true;
+      if(started && !speechSynthesis.speaking) return fire(); // dočteno
+      if(!started && t>2500) return fire();                   // čtení nenaběhlo
+      if(t>22000) return fire();                              // tvrdá pojistka
+    },150);
   }catch(e){ fire(); }
 }
 
@@ -893,12 +962,14 @@ function hostUnlock(i){
     if(connected>0&&answered>=connected){hostReveal(i);}
   });
   // odpočet
-  let left=SETTINGS.answerSeconds;
+  let left=SETTINGS.answerSeconds,lastPulseSec=left;
   $("h-timer").textContent=left;
   timerInt=setInterval(()=>{
     left=Math.max(0,Math.ceil((deadline-Date.now())/1000));
     $("h-timer").textContent=left;
+    $("h-timer").classList.toggle("urgent",left<=5&&left>0);
     if(left<=5&&left>0)sndTick();
+    if(left!==lastPulseSec){ lastPulseSec=left; if(left>0) tensionPulse(left,SETTINGS.answerSeconds); }
     if(left<=0){clearInterval(timerInt);hostReveal(i);}
   },250);
 }
@@ -931,10 +1002,11 @@ function hostReveal(i){
     db.ref("rooms/"+ROOM).update(updates);
     db.ref("rooms/"+ROOM+"/meta").update({state:"reveal",locked:true});
 
-    // vizuál: zvýrazni správnou, ostatní ztlum
+    // vizuál: zvýrazni správnou, ostatní ztlum (postupně, ať to gradí)
     document.querySelectorAll("#h-answers .ans").forEach(el=>{
       const idx=+el.dataset.idx;
-      if(idx===Q.correct){el.classList.add("win");}else{el.classList.add("dim");}
+      el.style.transitionDelay=(Math.abs(idx-Q.correct)*90)+"ms";
+      setTimeout(()=>{ if(idx===Q.correct){el.classList.add("win");}else{el.classList.add("dim");} },idx===Q.correct?0:60);
     });
     sndCorrect();
     const msgEl=$("h-reveal-msg");msgEl.classList.remove("hidden");
@@ -942,8 +1014,11 @@ function hostReveal(i){
     if(correctCount===0){
       const noOne=["Tohle nikdo nedal!","Nula správných — pěkně záludné!","To bylo těžké, co? Nikdo netrefil.","Ani jeden! Příště to vyjde."];
       resultText=noOne[Math.floor(Math.random()*noOne.length)];
+      const card=$("host-question"); card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
     }else{
       resultText="Správně: "+Q.a[Q.correct];
+      document.body.classList.remove("flash-ok"); void document.body.offsetWidth; document.body.classList.add("flash-ok");
+      setTimeout(()=>document.body.classList.remove("flash-ok"),900);
     }
     msgEl.innerHTML=escapeHtml(resultText);
     const spoken=(correctCount===0?resultText:"Správně bylo: "+Q.a[Q.correct])+".";
@@ -960,7 +1035,6 @@ function showBoard(i){
   $("b-continue").textContent=last?"Hrát znovu":"Další otázka →";
   const factEl=$("b-fact"); factEl.classList.add("hidden"); factEl.textContent="";
   if(last){
-    clearAutoAdvance();
     db.ref("rooms/"+ROOM+"/meta").update({state:"finished"});
     renderFinalPodium($("b-board"));
   }else{
@@ -971,8 +1045,6 @@ function showBoard(i){
       factEl.textContent="💡 "+f; factEl.classList.remove("hidden");
       setTimeout(()=>speak(f),700);
     }
-    // spusť odpočet k další otázce (po chvilce ať žebříček stihne dojet)
-    setTimeout(()=>startAutoAdvance(false), 1200);
   }
 }
 
@@ -1000,7 +1072,7 @@ function renderFinalPodium(container){
     big.textContent=labels[step];
     sub2.textContent=(p.avatar||"")+" "+(p.name||"?")+" — "+(p.score||0)+" b.";
     speak(labels[step].replace(/[^\wáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ ]/g,"")+": "+(p.name||"")+", "+(p.score||0)+" bodů.");
-    sndCorrect();
+    if(step===order.length-1){ sndVictory(); confettiBurst(80); } else sndCorrect();
     step++;
     setTimeout(next,2800);
   }
@@ -1108,65 +1180,6 @@ function renderPersonalBoard(container,players){
   });
 }
 
-/* ============================================================
-   AUTO-ADVANCE COUNTDOWN (tabule → další otázka)
-   ============================================================ */
-const AUTO_ADVANCE_SECS = 10;   // kolik sekund čekat na tabuli
-let autoAdvanceInt = null;
-let autoAdvancePaused = false;
-let autoAdvanceLeft = AUTO_ADVANCE_SECS;
-
-function startAutoAdvance(isLast) {
-  clearAutoAdvance();
-  if (isLast) return;                   // na konci hry nespouštět
-  autoAdvancePaused = false;
-  autoAdvanceLeft = AUTO_ADVANCE_SECS;
-  const barEl = $("b-autobar");
-  const fillEl = $("b-autobar-fill");
-  const labelEl = $("b-autobar-label");
-  const pauseBtn = $("b-pause-btn");
-  barEl.classList.remove("hidden");
-  pauseBtn.textContent = "⏸ Pauza";
-  labelEl.textContent = autoAdvanceLeft;
-  fillEl.style.width = "100%";
-
-  autoAdvanceInt = setInterval(() => {
-    if (autoAdvancePaused) return;
-    autoAdvanceLeft = Math.max(0, autoAdvanceLeft - 0.25);
-    const pct = (autoAdvanceLeft / AUTO_ADVANCE_SECS) * 100;
-    fillEl.style.width = pct + "%";
-    labelEl.textContent = Math.ceil(autoAdvanceLeft);
-    if (autoAdvanceLeft <= 0) {
-      clearAutoAdvance();
-      hostNext();
-    }
-  }, 250);
-}
-
-function clearAutoAdvance() {
-  clearInterval(autoAdvanceInt);
-  autoAdvanceInt = null;
-  autoAdvancePaused = false;
-  const barEl = $("b-autobar");
-  if (barEl) barEl.classList.add("hidden");
-}
-
-function toggleBoardPause() {
-  autoAdvancePaused = !autoAdvancePaused;
-  const btn = $("b-pause-btn");
-  if (autoAdvancePaused) {
-    btn.textContent = "▶ Pokračovat";
-  } else {
-    btn.textContent = "⏸ Pauza";
-  }
-}
-
-function hostNextManual() {
-  clearAutoAdvance();
-  hostNext();
-}
-
-
 function hostNext(){
   db.ref("rooms/"+ROOM+"/meta/qIndex").once("value").then(s=>{
     const i=s.val();
@@ -1190,7 +1203,7 @@ function hostNext(){
    7) OVLADAČ (TELEFON)
    ============================================================ */
 const ctrlSub={join:"ctrl-join",wait:"ctrl-wait",buzz:"ctrl-buzz",result:"ctrl-result"};
-let myPid=null,myAnswer=null,myColor=AVATAR_COLORS[0],myAvatar=AVATARS[0],lastState="",lastQ=-1,ctrlTimerInt=null;
+let myPid=null,myAnswer=null,myColor=AVATAR_COLORS[0],myAvatar=AVATARS[0],lastState="",lastQ=-1,ctrlTimerInt=null,lastRevealSoundQ=-1,myStreak=0;
 
 function startController(){
   show("screen-ctrl");
@@ -1301,7 +1314,8 @@ function ctrlRender(m){
   // konec
   if(m.state==="finished"){ ensureQuiz(()=>renderCtrlResult(m,true)); return; }
   // lobby / čekání
-  if(m.state==="lobby"||(m.state!=="question"&&m.state!=="reveal")){sub(ctrlSub,"ctrl-wait");return;}
+  if(m.state==="lobby"){myStreak=0;sub(ctrlSub,"ctrl-wait");return;}
+  if(m.state!=="question"&&m.state!=="reveal"){sub(ctrlSub,"ctrl-wait");return;}
 
   // pro otázku/reveal potřebujeme znát výběr otázek
   if((m.state==="question"||m.state==="reveal") && !(gameQ&&gameQ.length)){
@@ -1362,7 +1376,7 @@ function showLocked(){
 
 function startCtrlTimer(deadline){
   clearInterval(ctrlTimerInt);
-  function tick(){const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));$("c-timer").textContent=left;if(left<=0)clearInterval(ctrlTimerInt);}
+  function tick(){const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));$("c-timer").textContent=left;$("c-timer").classList.toggle("urgent",left<=5&&left>0);if(left<=0)clearInterval(ctrlTimerInt);}
   tick();ctrlTimerInt=setInterval(tick,250);
 }
 
@@ -1387,12 +1401,13 @@ function renderCtrlResult(m,finished){
     const pos=arr.findIndex(x=>x.pid===myPid)+1;
 
     if(finished){
-      const win=arr[0];
+      const win=arr[0],iWon=(win&&win.pid===myPid);
       $("c-result-big").className="statusbig display";
-      $("c-result-big").innerHTML=(win&&win.pid===myPid)?"👑 Vyhrál jsi!":"Konec hry";
+      $("c-result-big").innerHTML=iWon?"👑 Vyhrál jsi!":"Konec hry";
       $("c-result-sub").textContent=pos+". místo z "+arr.length;
       $("c-myscore").textContent=me.score+" b.";
       renderPersonalBoard($("c-board"),players);
+      if(iWon){sndVictory();confettiBurst(50);if(navigator.vibrate)navigator.vibrate([60,40,60,40,120]);}
       return;
     }
     const correct=(myAnswer===Q.correct);
@@ -1401,9 +1416,17 @@ function renderCtrlResult(m,finished){
     $("c-result-sub").textContent="Správně bylo: "+Q.a[Q.correct]+"  •  "+pos+". místo";
     $("c-myscore").textContent=me.score+" b.";
     renderPersonalBoard($("c-board"),players);
+    if(qi!==lastRevealSoundQ){
+      lastRevealSoundQ=qi;
+      if(correct){myStreak++;sndCorrect();if(navigator.vibrate)navigator.vibrate(60);}
+      else{myStreak=0;if(myAnswer===null)sndTimeout();else{sndWrong();if(navigator.vibrate)navigator.vibrate([40,30,40]);}}
+    }
+    const streakEl=$("c-streak");
+    if(correct&&myStreak>=2){streakEl.textContent="🔥 Série: "+myStreak;streakEl.classList.remove("hidden");}
+    else{streakEl.classList.add("hidden");}
   });
 }
 </script>
-<div id="ver" style="position:fixed;right:8px;bottom:6px;z-index:9999;font-size:11px;color:rgba(255,255,255,.35);font-family:monospace;pointer-events:none">v16</div>
+<div id="ver" style="position:fixed;right:8px;bottom:6px;z-index:9999;font-size:11px;color:rgba(255,255,255,.35);font-family:monospace;pointer-events:none">v13</div>
 </body>
 </html>
