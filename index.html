@@ -283,7 +283,6 @@ input.txt:focus{outline:none;border-color:var(--gold)}
       <div class="qcount">Hlasování</div>
       <div class="timer" id="v-ctrl-timer"></div>
     </div>
-    <div id="v-ctrl-mode" class="badge-mode hidden" style="align-self:center"></div>
     <div class="qtext display" style="font-size:clamp(18px,5.5vw,26px);margin:0">Jaké téma dál?</div>
     <div class="buzzgrid" id="v-ctrl-options"></div>
   </div>
@@ -323,12 +322,13 @@ const SETTINGS = {
   questionsPerGame: 36,  // 6 bloků po 6 otázkách = 36 otázek na hru
   answerSeconds: 12,     // kolik vteřin mají hráči na odpověď
   rampDifficulty: true,  // true = v každém bloku jdou otázky od nejlehčích po nejtěžší
-  speedBase: 800,        // základní počet bodů za správnou odpověď
+  flatPoints: 1000,      // kulatý základ bodů v módech, kde nezáleží na rychlosti (Klasika/Dvojité/Joker/Riziko/Série)
+  speedBase: 800,        // základ bodů POUZE v módu "Rychlost"
   speedBonus: 200,       // navíc max za nejrychlejší v módu "Rychlost" (nejrychlejší = base+bonus = 1000)
   readAloud: true,       // TV čte otázky nahlas (jen TV)
   speechRate: 1.0,       // rychlost čtení (1.0 = přirozené lidské tempo)
   voteBlockSize: 6,      // po kolika otázkách se hlasuje o dalším tématu (= délka jednoho bloku/módu)
-  voteSeconds: 8         // kolik vteřin mají hráči na hlasování o tématu
+  voteSeconds: 15        // kolik vteřin mají hráči na hlasování o tématu
 };
 
 /* ============================================================
@@ -675,12 +675,12 @@ const AVATARS = ["🦊","🐼","🐸","🦄","🐲","🦁","🐙","👾","🤖",
    podle pořadí bloku ve hře (blok 1 = mód 1, blok 2 = mód 2, ...).
    ============================================================ */
 const MODE_INFO=[null,
-  {icon:"🎯",name:"Klasika",short:"KLASIKA",desc:"Plný počet bodů za správnou odpověď."},
-  {icon:"⚡",name:"Dvojité body",short:"DVOJITÉ BODY",desc:"Správná odpověď = dvojnásobek bodů."},
-  {icon:"⏱",name:"Rychlost",short:"RYCHLOST",desc:"Čím rychleji odpovíte, tím víc bodů."},
-  {icon:"🛡️",name:"Joker",short:"JOKER",desc:"Jednu chybu (i netrefení) vám odpustíme."},
-  {icon:"⚠️",name:"Riziko",short:"RIZIKO",desc:"Špatně nebo netrefíš = ztráta poloviny bodů."},
-  {icon:"🔥",name:"Série",short:"SÉRIE",desc:"Každá další správná v řadě přidává víc bodů."}
+  {icon:"🎯",name:"Klasika",short:"KLASIKA",desc:"Správná odpověď = 1000 bodů, na rychlosti nezáleží."},
+  {icon:"⚡",name:"Dvojité body",short:"DVOJITÉ BODY",desc:"Správná odpověď = 2000 bodů."},
+  {icon:"⏱",name:"Rychlost",short:"RYCHLOST",desc:"Čím rychleji odpovíte, tím víc bodů (800–1000)."},
+  {icon:"🛡️",name:"Joker",short:"JOKER",desc:"Jednu chybu (i netrefení) vám odpustíme — pořád 1000 bodů."},
+  {icon:"⚠️",name:"Riziko",short:"RIZIKO",desc:"Správně = 1000 bodů, špatně nebo netrefíš = −500."},
+  {icon:"🔥",name:"Série",short:"SÉRIE",desc:"Správné odpovědi v řadě: 1000, 1100, 1200, až 1300 bodů."}
 ];
 function blockModeFor(qIndex){
   const blockIdx=Math.floor(qIndex/SETTINGS.voteBlockSize);
@@ -1059,23 +1059,23 @@ function hostReveal(i){
           pts=SETTINGS.speedBase+Math.round(SETTINGS.speedBonus*frac);
         }
       }else if(mode===2){ // Dvojité body
-        if(isCorrect){ correctCount++; pts=SETTINGS.speedBase*2; }
+        if(isCorrect){ correctCount++; pts=SETTINGS.flatPoints*2; }
       }else if(mode===4){ // Joker
-        if(isCorrect){ correctCount++; pts=SETTINGS.speedBase; }
-        else if(!blockJoker[pid]){ blockJoker[pid]=true; jokerUsed[pid]=true; correctCount++; pts=SETTINGS.speedBase; }
+        if(isCorrect){ correctCount++; pts=SETTINGS.flatPoints; }
+        else if(!blockJoker[pid]){ blockJoker[pid]=true; jokerUsed[pid]=true; correctCount++; pts=SETTINGS.flatPoints; }
       }else if(mode===5){ // Riziko
-        if(isCorrect){ correctCount++; pts=SETTINGS.speedBase; }
-        else{ pts=-Math.round(SETTINGS.speedBase/2); }
+        if(isCorrect){ correctCount++; pts=SETTINGS.flatPoints; }
+        else{ pts=-Math.round(SETTINGS.flatPoints/2); }
       }else if(mode===6){ // Série
         if(isCorrect){
           correctCount++;
           blockStreak[pid]=(blockStreak[pid]||0)+1;
-          pts=Math.min(SETTINGS.speedBase+(blockStreak[pid]-1)*100, 1100);
+          pts=Math.min(SETTINGS.flatPoints+(blockStreak[pid]-1)*100, SETTINGS.flatPoints+300);
         }else{
           blockStreak[pid]=0;
         }
       }else{ // mode===1, Klasika
-        if(isCorrect){ correctCount++; pts=SETTINGS.speedBase; }
+        if(isCorrect){ correctCount++; pts=SETTINGS.flatPoints; }
       }
       if(pts!==0) updates["players/"+pid+"/score"]=cur+pts;
     });
@@ -1155,16 +1155,14 @@ function hostStartVote(size,cb){
   }
   voteRoundId++;
   const myRound=voteRoundId;
+  const mi=MODE_INFO[mode];
   sub(hostSub,"host-vote");
   renderVoteOptionsTV(topics);
-  const mi=MODE_INFO[mode];
-  const modeEl=$("v-mode"); modeEl.textContent=mi.icon+" "+mi.short; modeEl.classList.remove("hidden");
-  $("v-mode-desc").textContent=mi.desc;
   const deadline=Date.now()+SETTINGS.voteSeconds*1000;
   db.ref("rooms/"+ROOM+"/meta").update({state:"vote",voteOptions:topics,voteDeadline:deadline,voteRound:myRound,voteMode:mode});
   const votesRef=db.ref("rooms/"+ROOM+"/votes/"+myRound);
   votesRef.remove();
-  setTimeout(()=>speak("Hlasujte na telefonu, jaké téma chcete jako další! Tohle kolo bude v módu "+mi.name+"."),300);
+  setTimeout(()=>speak("Hlasujte na telefonu, jaké téma chcete jako další!"),300);
   let resolved=false;
   function finish(){
     if(resolved)return; resolved=true;
@@ -1178,7 +1176,7 @@ function hostStartVote(size,cb){
       const tiedIdx=counts.map((c,k)=>c===maxC?k:-1).filter(k=>k>=0);
       const winnerIdx=tiedIdx[Math.floor(Math.random()*tiedIdx.length)];
       const winner=topics[winnerIdx];
-      showVoteResultTV(winner,topics);
+      showVoteResultTV(winner,topics,mi);
       db.ref("rooms/"+ROOM+"/meta").update({state:"voteResult",voteWinner:winner});
       const picked=pickBlock(winner,size);
       gameQ=gameQ.concat(picked);
@@ -1202,6 +1200,8 @@ function hostStartVote(size,cb){
 function renderVoteOptionsTV(topics){
   const box=$("v-options"); box.innerHTML="";
   $("v-result").classList.add("hidden");
+  $("v-mode").classList.add("hidden");
+  $("v-mode-desc").textContent="";
   topics.forEach((t,idx)=>{
     const d=document.createElement("div"); d.className="ans c"+idx;
     d.innerHTML='<span class="shape">'+SHAPES[idx]+'</span><span>'+escapeHtml(t)+'</span>';
@@ -1212,11 +1212,14 @@ function updateVoteTimerTV(sec){
   const t=$("v-timer"); if(!t)return;
   t.textContent=sec; t.classList.toggle("urgent",sec<=3&&sec>0);
 }
-function showVoteResultTV(winner,topics){
+function showVoteResultTV(winner,topics,mi){
   const box=$("v-options");
   [...box.children].forEach((el,idx)=>{ el.classList.toggle("win",topics[idx]===winner); el.classList.toggle("dim",topics[idx]!==winner); });
   const r=$("v-result"); r.textContent="Vybrané téma: "+winner; r.classList.remove("hidden");
+  const modeEl=$("v-mode"); modeEl.textContent=mi.icon+" "+mi.short; modeEl.classList.remove("hidden");
+  $("v-mode-desc").textContent=mi.desc;
   sndCorrect();
+  setTimeout(()=>speak("Vybráno téma "+winner+"! Tohle kolo hrajeme v módu "+mi.name+". "+mi.desc),500);
 }
 
 // na konci hry: nejdřív postupně pogratuluj 3., 2. a 1. místu, pak ukaž celý žebříček
@@ -1662,7 +1665,12 @@ function ctrlRender(m){
   // lobby / čekání
   if(m.state==="lobby"){myStreak=0;myVote=null;mySdAnswer=null;sub(ctrlSub,"ctrl-wait");return;}
   if(m.state==="vote"){ renderVoteCtrl(m); return; }
-  if(m.state==="voteResult"){ sub(ctrlSub,"ctrl-wait"); $("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Vybráno: "+(m.voteWinner||"?"); return; }
+  if(m.state==="voteResult"){
+    sub(ctrlSub,"ctrl-wait");
+    const mi=MODE_INFO[m.voteMode];
+    $("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Vybráno: "+(m.voteWinner||"?")+(mi?"  •  "+mi.icon+" "+mi.name:"");
+    return;
+  }
   if(m.state==="sudden"){ renderSuddenCtrl(m); return; }
   if(m.state!=="question"&&m.state!=="reveal"){sub(ctrlSub,"ctrl-wait");return;}
 
@@ -1713,7 +1721,6 @@ function buildBuzz(qi){
    ============================================================ */
 function renderVoteCtrl(m){
   if(m.voteRound!==myVoteRound){ myVoteRound=m.voteRound; myVote=null; buildVoteButtons(m.voteOptions||[]); }
-  if(m.voteMode){ const mi=MODE_INFO[m.voteMode]; const el=$("v-ctrl-mode"); el.textContent=mi.icon+" "+mi.short; el.classList.remove("hidden"); }
   if(myVote!==null){
     sub(ctrlSub,"ctrl-wait");
     $("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Hlasy se sčítají…";
