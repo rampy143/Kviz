@@ -195,7 +195,7 @@ input.txt:focus{outline:none;border-color:var(--gold)}
       <span>🔊 hlas:</span>
       <select id="voiceSel" onchange="onVoicePick()" style="background:var(--bg2);color:var(--ink);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:6px 8px;font-size:13px;max-width:60vw"></select>
       <button class="btn" style="padding:6px 12px;font-size:13px;width:auto" onclick="testVoice()">test</button>
-      <button id="musicBtn" class="btn ghost" style="padding:6px 12px;font-size:13px;width:auto" onclick="toggleMusic()">🎵 hudba: zapnutá</button>
+      <button id="musicBtn" class="btn ghost" style="padding:6px 12px;font-size:13px;width:auto" onclick="toggleMusic()">🎵 zvuky: zapnuté</button>
     </div>
   </div>
 
@@ -817,24 +817,6 @@ function sndVictory(){
   notes([[523,.14,0],[659,.14,.14],[784,.14,.28],[1047,.4,.42]],"triangle",.17);
 }
 
-/* jemná hudba v lobby, dokud se čeká na hráče */
-let lobbyMusicTimer=null,lobbyMusicStep=0;
-const LOBBY_MOTIF=[392,440,523,440,392,330,392,523];
-function startLobbyMusic(){
-  stopLobbyMusic();
-  if(!musicOn)return;
-  lobbyMusicStep=0;
-  const tick=()=>{
-    const f=LOBBY_MOTIF[lobbyMusicStep%LOBBY_MOTIF.length];
-    beep(f,.5,"sine",.045);
-    beep(f/2,.5,"triangle",.03);
-    lobbyMusicStep++;
-  };
-  tick();
-  lobbyMusicTimer=setInterval(tick,650);
-}
-function stopLobbyMusic(){ if(lobbyMusicTimer){clearInterval(lobbyMusicTimer);lobbyMusicTimer=null;} }
-
 /* jemný "napínavý" tep během odpočtu na odpověď, zrychluje se blížícím koncem */
 function tensionPulse(secLeft,secTotal){
   if(!musicOn)return;
@@ -845,9 +827,7 @@ function tensionPulse(secLeft,secTotal){
 function toggleMusic(){
   musicOn=!musicOn;
   try{localStorage.setItem("kviz_music",musicOn?"on":"off");}catch(e){}
-  const b=$("musicBtn"); if(b) b.textContent="🎵 hudba: "+(musicOn?"zapnutá":"vypnutá");
-  if(musicOn){ if($("host-lobby")&&!$("host-lobby").classList.contains("hidden")) startLobbyMusic(); }
-  else stopLobbyMusic();
+  const b=$("musicBtn"); if(b) b.textContent="🎵 zvuky: "+(musicOn?"zapnuté":"vypnuté");
 }
 
 /* ============================================================
@@ -875,10 +855,9 @@ function becomeHost(){
   ensureAudio();
   speak(" "); // odemkne hlas (potřebuje kliknutí)
   setTimeout(fillVoiceMenu,300); // naplň nabídku hlasů (po načtení hlasů)
-  const mb=$("musicBtn"); if(mb) mb.textContent="🎵 hudba: "+(musicOn?"zapnutá":"vypnutá");
+  const mb=$("musicBtn"); if(mb) mb.textContent="🎵 zvuky: "+(musicOn?"zapnuté":"vypnuté");
   ROOM=randCode();
   show("screen-host");sub(hostSub,"host-lobby");
-  startLobbyMusic();
   const base={
     meta:{ state:"lobby", started:false, qIndex:-1, locked:true, deadline:0, total:Math.min(SETTINGS.questionsPerGame,QUESTIONS.length) },
   };
@@ -914,7 +893,6 @@ function escapeHtml(s){return (s+"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt
 
 function startGame(){
   if(Object.keys(hostPlayers).length===0){ toast("Připoj nejdřív aspoň jednoho hráče"); return; }
-  stopLobbyMusic();
   prevStandings=[]; prevScores={};
   gameQ=pickGameQuestions();   // náhodný výběr otázek pro tuto hru
   db.ref("rooms/"+ROOM+"/quiz").set(gameQ);   // sdílej s telefony
