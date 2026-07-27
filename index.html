@@ -160,6 +160,12 @@ input.txt:focus{outline:none;border-color:var(--gold)}
 /* streak na telefonu */
 .streak{font-family:'Baloo 2';font-weight:700;color:var(--gold);font-size:clamp(16px,3.6vw,22px)}
 
+/* dvojnásobné body */
+.badge-double{display:inline-block;background:var(--gold);color:#2a1500;font-family:'Baloo 2';font-weight:700;font-size:clamp(13px,2.6vw,18px);padding:6px 16px;border-radius:999px;animation:winpulse .8s infinite alternate;margin:2px 0}
+
+/* rozstřel při remíze */
+.sd-banner{font-family:'Baloo 2';font-weight:700;color:var(--c3);font-size:clamp(16px,3.4vw,24px);text-shadow:0 2px 0 rgba(0,0,0,.3)}
+
 @media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 </style>
 </head>
@@ -201,15 +207,26 @@ input.txt:focus{outline:none;border-color:var(--gold)}
 
   <!-- OTÁZKA / REVEAL -->
   <div id="host-question" class="center hidden">
+    <div id="h-sd-banner" class="sd-banner hidden"></div>
     <div class="qhead">
       <div class="qcount" id="h-qcount"></div>
       <div class="timer" id="h-timer"></div>
     </div>
+    <div id="h-double" class="badge-double hidden">⚡ DVOJNÁSOBNÉ BODY</div>
     <div class="qtext display" id="h-qtext"></div>
     <img id="h-media" class="qmedia hidden" alt="">
     <div class="answers" id="h-answers"></div>
     <div id="h-reveal-msg" class="statusbig hidden" style="margin-top:6px"></div>
     <button id="h-next" class="btn hidden" style="width:min(420px,90vw)" onclick="hostNext()">Další otázka →</button>
+  </div>
+
+  <!-- HLASOVÁNÍ O TÉMATU -->
+  <div id="host-vote" class="center hidden">
+    <div class="eyebrow">hlasujte na telefonu</div>
+    <div class="qtext display">Jaké téma chcete jako další?</div>
+    <div class="timer" id="v-timer"></div>
+    <div class="answers" id="v-options"></div>
+    <div id="v-result" class="statusbig hidden" style="margin-top:6px"></div>
   </div>
 
   <!-- ŽEBŘÍČEK / KONEC -->
@@ -253,8 +270,19 @@ input.txt:focus{outline:none;border-color:var(--gold)}
       <div class="qcount" id="c-rank"></div>
       <div class="timer" id="c-timer"></div>
     </div>
+    <div id="c-double" class="badge-double hidden" style="align-self:center">⚡ 2x body</div>
     <div class="qtext display" id="c-qtext" style="font-size:clamp(18px,5.5vw,26px);margin:0"></div>
     <div class="buzzgrid" id="c-buzz"></div>
+  </div>
+
+  <!-- HLASOVÁNÍ O TÉMATU -->
+  <div id="ctrl-vote" style="flex:1;display:flex;flex-direction:column;gap:12px;width:100%">
+    <div class="qhead">
+      <div class="qcount">Hlasování</div>
+      <div class="timer" id="v-ctrl-timer"></div>
+    </div>
+    <div class="qtext display" style="font-size:clamp(18px,5.5vw,26px);margin:0">Jaké téma dál?</div>
+    <div class="buzzgrid" id="v-ctrl-options"></div>
   </div>
 
   <!-- ZAMČENO / VÝSLEDEK -->
@@ -297,7 +325,9 @@ const SETTINGS = {
   speedBonus: 200,       // navíc max za nejrychlejší (nejrychlejší = base+bonus = 1000)
   pointsPerCorrect: 1,   // body za správně v klasickém režimu
   readAloud: true,       // TV čte otázky nahlas (jen TV)
-  speechRate: 1.0        // rychlost čtení (1.0 = přirozené lidské tempo)
+  speechRate: 1.0,       // rychlost čtení (1.0 = přirozené lidské tempo)
+  voteBlockSize: 5,      // po kolika otázkách se hlasuje o dalším tématu
+  voteSeconds: 8         // kolik vteřin mají hráči na hlasování o tématu
 };
 
 /* ============================================================
@@ -676,48 +706,44 @@ function uid(){return "p"+Math.random().toString(36).slice(2,9);}
 // Odpovědi jsou v datech skoro vždy na pozici 1 (oranžová).
 // Při výběru otázek jim přiřadíme náhodný offset rotace a uložíme ho spolu s indexem.
 // gameQ = pole objektů { qi, rot } místo pouhých čísel.
-let gameQ=[]; // pole { qi, rot }
+let gameQ=[];              // pole { qi, rot } — staví se postupně po blocích podle hlasování o tématu
+let GAME_TOTAL=0;          // pevný celkový počet otázek pro tuto hru (nemění se v průběhu)
+let usedQIdx=new Set();    // indexy otázek (do QUESTIONS) už použité v této hře, napříč všemi bloky
+let doubleIdx=-1;          // pořadí otázky (0-based) ve hře, která dává dvojnásobné body
 function shuffleArr(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
-function pickGameQuestions(){
-  const n=Math.min(SETTINGS.questionsPerGame, QUESTIONS.length);
-  // seskup indexy otázek podle tématu
-  const byTopic={};
-  QUESTIONS.forEach((q,idx)=>{ const t=q.t||"_"; (byTopic[t]=byTopic[t]||[]).push(idx); });
-  const topics=shuffleArr(Object.keys(byTopic));
-  // rozděl počet rovnoměrně mezi témata, zbytek rozhoď náhodně
-  const base=Math.floor(n/topics.length);
-  let remainder=n-base*topics.length;
-  let picked=[];
-  topics.forEach(t=>{
-    let take=base+(remainder>0?1:0);
-    if(remainder>0) remainder--;
-    picked=picked.concat(shuffleArr(byTopic[t]).slice(0,Math.min(take,byTopic[t].length)));
-  });
-  // kdyby nějaké téma mělo míň otázek, doplň náhodně z celku
-  if(picked.length<n){
-    const rest=shuffleArr([...Array(QUESTIONS.length).keys()].filter(i=>picked.indexOf(i)<0));
-    picked=picked.concat(rest.slice(0,n-picked.length));
-  }
-  let chosen=shuffleArr(picked).slice(0,n); // zamíchat, ať nejdou po tématech
-  if(SETTINGS.rampDifficulty){ chosen=chosen.slice().sort((a,b)=>((QUESTIONS[a].d||2)-(QUESTIONS[b].d||2))); }
-  // přiřaď rotaci tak, aby se správné odpovědi rovnoměrně střídaly mezi 4 barvami
-  return chosen.map((qi)=>({ qi, rot: Math.floor(Math.random()*4) }));
+
+// Vrátí seznam témat, ve kterých ještě zbývají nepoužité otázky.
+function availableTopics(){
+  const set=new Set();
+  QUESTIONS.forEach((q,idx)=>{ if(!usedQIdx.has(idx)) set.add(q.t||"_"); });
+  return [...set];
 }
-// Vrátí otázku s přeházeným pořadím odpovědí podle rot (0–3).
-// Výsledný objekt má stejnou strukturu jako QUESTIONS[i], ale a[] a correct jsou rotované.
+// Vybere "size" otázek z daného tématu (nepoužitých), s náhodnou rotací odpovědí.
+// Pokud v tématu nezbývá dost otázek, doplní z libovolného jiného nepoužitého tématu.
+function pickBlock(topic, size){
+  const avail=[];
+  QUESTIONS.forEach((q,idx)=>{ if(!usedQIdx.has(idx) && (q.t||"_")===topic) avail.push(idx); });
+  let chosen=shuffleArr(avail).slice(0,size);
+  if(chosen.length<size){
+    const rest=shuffleArr([...Array(QUESTIONS.length).keys()].filter(i=>!usedQIdx.has(i)&&chosen.indexOf(i)<0));
+    chosen=chosen.concat(rest.slice(0,size-chosen.length));
+  }
+  if(SETTINGS.rampDifficulty){ chosen=chosen.slice().sort((a,b)=>((QUESTIONS[a].d||2)-(QUESTIONS[b].d||2))); }
+  chosen.forEach(i=>usedQIdx.add(i));
+  return chosen.map(qi=>({ qi, rot: Math.floor(Math.random()*4) }));
+}
+// Vrátí otázku QUESTIONS[qi] s pořadím odpovědí přeházeným podle rot (0–3).
+function rotateQuestion(qi,rot){
+  const raw=QUESTIONS[qi]; if(!raw||!rot) return raw;
+  const newA=Array(4);
+  raw.a.forEach((txt,k)=>{ newA[(k+rot)%4]=txt; });
+  return { ...raw, a:newA, correct:(raw.correct+rot)%4 };
+}
 function getQ(i){
   const entry = (gameQ && gameQ[i] !== undefined) ? gameQ[i] : { qi: i, rot: 0 };
-  const raw = QUESTIONS[entry.qi !== undefined ? entry.qi : entry];
-  if(!raw) return raw;
-  const rot = entry.rot || 0;
-  if(rot === 0) return raw;
-  // rotuj odpovědi: odpověď na pozici k jde na pozici (k + rot) % 4
-  const newA = Array(4);
-  raw.a.forEach((txt, k) => { newA[(k + rot) % 4] = txt; });
-  const newCorrect = (raw.correct + rot) % 4;
-  return { ...raw, a: newA, correct: newCorrect };
+  return rotateQuestion(entry.qi !== undefined ? entry.qi : entry, entry.rot || 0);
 }
-function gameLen(){ return (gameQ&&gameQ.length)?gameQ.length:Math.min(SETTINGS.questionsPerGame,QUESTIONS.length); }
+function gameLen(){ return GAME_TOTAL || (gameQ&&gameQ.length) || Math.min(SETTINGS.questionsPerGame,QUESTIONS.length); }
 
 /* čtení nahlas – jen TV */
 let voiceCS=null;
@@ -843,11 +869,13 @@ else { show("screen-landing"); }
 /* ============================================================
    6) HOST (TV)
    ============================================================ */
-const hostSub={lobby:"host-lobby",question:"host-question",board:"host-board"};
+const hostSub={lobby:"host-lobby",question:"host-question",vote:"host-vote",board:"host-board"};
 let hostPlayers={};      // pid -> {name,avatar,color,score,connected}
 let hostUnsub=[];
 let timerInt=null;
 let unlockFallbackTimer=null, questionUnlocked=false;
+let voteRoundId=0, voteTimerInt=null;
+let sdRound=0, sdTied=[], sdTimerInt=null, sdUnlockTime=0, sdArrival={}, sdRevealedRound=-1;
 let questionUnlockTime=0, answerArrival={};   // měření rychlosti odpovědí (čas si hlídá TV)
 let prevStandings=[], prevScores={}, boardScrollAnim=null;
 
@@ -894,14 +922,19 @@ function escapeHtml(s){return (s+"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt
 function startGame(){
   if(Object.keys(hostPlayers).length===0){ toast("Připoj nejdřív aspoň jednoho hráče"); return; }
   prevStandings=[]; prevScores={};
-  gameQ=pickGameQuestions();   // náhodný výběr otázek pro tuto hru
-  db.ref("rooms/"+ROOM+"/quiz").set(gameQ);   // sdílej s telefony
-  db.ref("rooms/"+ROOM+"/meta").update({started:true, total:gameQ.length});
+  usedQIdx=new Set(); gameQ=[]; sdRound=0;
+  GAME_TOTAL=Math.min(SETTINGS.questionsPerGame,QUESTIONS.length);
+  doubleIdx=GAME_TOTAL>1?Math.floor(Math.random()*GAME_TOTAL):-1;
+  db.ref("rooms/"+ROOM+"/quiz").set([]);
+  db.ref("rooms/"+ROOM+"/meta").update({started:true, total:GAME_TOTAL, doubleIdx});
   db.ref("rooms/"+ROOM+"/players").off();        // lobby zamčeno
   db.ref("rooms/"+ROOM+"/players").on("value",s=>{hostPlayers=s.val()||{};}); // dál sleduj skóre/odpojení
-  // krátké vysvětlení pravidel před první otázkou (čte jen TV), pak spustí 1. otázku
-  const intro="Jdeme na to! Přečtu vždy otázku a čtyři barevné možnosti. Jakmile se odpovědi odemknou, ťukněte na svém telefonu na barvu se správnou odpovědí. A hlavně: čím rychleji odpovíte správně, tím víc bodů získáte. Tak ať vám to pálí. První otázka přichází!";
-  speak(intro,()=>hostShowQuestion(0));
+  // krátké vysvětlení pravidel před první otázkou (čte jen TV), pak nechá vyhlasovat první téma a spustí 1. otázku
+  const intro="Jdeme na to! Přečtu vždy otázku a čtyři barevné možnosti. Jakmile se odpovědi odemknou, ťukněte na svém telefonu na barvu se správnou odpovědí. A hlavně: čím rychleji odpovíte správně, tím víc bodů získáte. Tak ať vám to pálí. Nejdřív ale vyhlasujte první téma!";
+  speak(intro,()=>{
+    const size=Math.min(SETTINGS.voteBlockSize,GAME_TOTAL);
+    hostStartVote(size,()=>hostShowQuestion(0));
+  });
 }
 
 function hostShowQuestion(i){
@@ -912,6 +945,8 @@ function hostShowQuestion(i){
   sub(hostSub,"host-question");
   $("h-reveal-msg").classList.add("hidden");
   $("h-next").classList.add("hidden");
+  $("h-sd-banner").classList.add("hidden");
+  $("h-double").classList.toggle("hidden", i!==doubleIdx);
   $("h-qcount").textContent="Otázka "+(i+1)+" / "+gameLen();
   $("h-qtext").textContent=Q.q;
   // obrázek jen na TV
@@ -993,6 +1028,7 @@ function hostReveal(i){
     const ans=snap.val()||{};
     let correctCount=0;const updates={};
     const win=SETTINGS.answerSeconds*1000;
+    const isDouble=(i===doubleIdx);
     Object.keys(ans).forEach(pid=>{
       if(ans[pid]===Q.correct){
         correctCount++;
@@ -1006,6 +1042,7 @@ function hostReveal(i){
         }else{
           pts = SETTINGS.pointsPerCorrect;
         }
+        if(isDouble) pts*=2;
         updates["players/"+pid+"/score"]=cur+pts;
       }
     });
@@ -1026,7 +1063,7 @@ function hostReveal(i){
       resultText=noOne[Math.floor(Math.random()*noOne.length)];
       const card=$("host-question"); card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
     }else{
-      resultText="Správně: "+Q.a[Q.correct];
+      resultText="Správně: "+Q.a[Q.correct]+(isDouble?"  ⚡×2":"");
       document.body.classList.remove("flash-ok"); void document.body.offsetWidth; document.body.classList.add("flash-ok");
       setTimeout(()=>document.body.classList.remove("flash-ok"),900);
     }
@@ -1046,8 +1083,7 @@ function showBoard(i){
   const factEl=$("b-fact"); factEl.classList.add("hidden"); factEl.textContent="";
   if(last){
     clearAutoAdvance();
-    db.ref("rooms/"+ROOM+"/meta").update({state:"finished"});
-    renderFinalPodium($("b-board"));
+    checkTieOrFinish();
   }else{
     renderBoardTV($("b-board"));
     // zajímavost se řekne a ukáže až tady, když je vidět tabulka
@@ -1059,6 +1095,90 @@ function showBoard(i){
     // spusť odpočet k další otázce (po chvilce ať žebříček stihne dojet)
     setTimeout(()=>startAutoAdvance(false), 1200);
   }
+}
+
+function finishGame(){
+  db.ref("rooms/"+ROOM+"/meta").update({state:"finished"});
+  sub(hostSub,"host-board");
+  $("b-title").textContent="konec hry — výsledky";
+  $("b-continue").textContent="Hrát znovu";
+  renderFinalPodium($("b-board"));
+}
+
+/* ============================================================
+   HLASOVÁNÍ O TÉMATU (mezi bloky otázek)
+   ============================================================ */
+// Vybere další "size" otázek do gameQ — pokud je z čeho vybírat téma, nechá hráče
+// hlasovat na telefonu; nakonec zavolá cb().
+function hostStartVote(size,cb){
+  const topics=shuffleArr(availableTopics()).slice(0,4);
+  if(topics.length<=1){
+    const picked=pickBlock(topics[0],size);
+    gameQ=gameQ.concat(picked);
+    db.ref("rooms/"+ROOM+"/quiz").set(gameQ).then(cb);
+    return;
+  }
+  voteRoundId++;
+  const myRound=voteRoundId;
+  sub(hostSub,"host-vote");
+  renderVoteOptionsTV(topics);
+  const deadline=Date.now()+SETTINGS.voteSeconds*1000;
+  db.ref("rooms/"+ROOM+"/meta").update({state:"vote",voteOptions:topics,voteDeadline:deadline,voteRound:myRound});
+  const votesRef=db.ref("rooms/"+ROOM+"/votes/"+myRound);
+  votesRef.remove();
+  setTimeout(()=>speak("Hlasujte na telefonu, jaké téma chcete jako další!"),300);
+  let resolved=false;
+  function finish(){
+    if(resolved)return; resolved=true;
+    votesRef.off(); clearInterval(voteTimerInt);
+    votesRef.once("value").then(snap=>{
+      const votes=snap.val()||{};
+      const counts=topics.map(()=>0);
+      Object.values(votes).forEach(v=>{ if(counts[v]!==undefined) counts[v]++; });
+      let best=0; for(let k=1;k<counts.length;k++) if(counts[k]>counts[best]) best=k;
+      const maxC=counts[best];
+      const tiedIdx=counts.map((c,k)=>c===maxC?k:-1).filter(k=>k>=0);
+      const winnerIdx=tiedIdx[Math.floor(Math.random()*tiedIdx.length)];
+      const winner=topics[winnerIdx];
+      showVoteResultTV(winner,topics);
+      db.ref("rooms/"+ROOM+"/meta").update({state:"voteResult",voteWinner:winner});
+      const picked=pickBlock(winner,size);
+      gameQ=gameQ.concat(picked);
+      db.ref("rooms/"+ROOM+"/quiz").set(gameQ);
+      setTimeout(cb,2200);
+    });
+  }
+  votesRef.on("value",snap=>{
+    const votes=snap.val()||{};
+    const connected=Object.values(hostPlayers).filter(p=>p.connected!==false).length;
+    if(connected>0 && Object.keys(votes).length>=connected) finish();
+  });
+  let vleft=SETTINGS.voteSeconds;
+  updateVoteTimerTV(vleft);
+  voteTimerInt=setInterval(()=>{
+    vleft=Math.max(0,Math.ceil((deadline-Date.now())/1000));
+    updateVoteTimerTV(vleft);
+    if(vleft<=0) finish();
+  },250);
+}
+function renderVoteOptionsTV(topics){
+  const box=$("v-options"); box.innerHTML="";
+  $("v-result").classList.add("hidden");
+  topics.forEach((t,idx)=>{
+    const d=document.createElement("div"); d.className="ans c"+idx;
+    d.innerHTML='<span class="shape">'+SHAPES[idx]+'</span><span>'+escapeHtml(t)+'</span>';
+    box.appendChild(d);
+  });
+}
+function updateVoteTimerTV(sec){
+  const t=$("v-timer"); if(!t)return;
+  t.textContent=sec; t.classList.toggle("urgent",sec<=3&&sec>0);
+}
+function showVoteResultTV(winner,topics){
+  const box=$("v-options");
+  [...box.children].forEach((el,idx)=>{ el.classList.toggle("win",topics[idx]===winner); el.classList.toggle("dim",topics[idx]!==winner); });
+  const r=$("v-result"); r.textContent="Vybrané téma: "+winner; r.classList.remove("hidden");
+  sndCorrect();
 }
 
 // na konci hry: nejdřív postupně pogratuluj 3., 2. a 1. místu, pak ukaž celý žebříček
@@ -1096,6 +1216,112 @@ function sortedPlayers(){
   const arr=Object.entries(hostPlayers).map(([pid,p])=>({pid,...p,score:p.score||0}));
   arr.sort((a,b)=>b.score-a.score);
   return arr;
+}
+
+/* ============================================================
+   ROZSTŘEL PŘI REMÍZE NA 1. MÍSTĚ
+   ============================================================ */
+function checkTieOrFinish(){
+  const arr=sortedPlayers();
+  const top=arr[0]?arr[0].score:0;
+  const tied=arr.filter(p=>p.score===top && top>0).map(p=>p.pid);
+  if(tied.length>=2 && sdRound<3){
+    startSuddenDeath(tied);
+  }else{
+    finishGame();
+  }
+}
+
+function startSuddenDeath(tiedPids){
+  sdRound++;
+  sdTied=tiedPids;
+  const idx=Math.floor(Math.random()*QUESTIONS.length);
+  const rot=Math.floor(Math.random()*4);
+  const Q=rotateQuestion(idx,rot);
+  sub(hostSub,"host-question");
+  $("h-reveal-msg").classList.add("hidden");
+  $("h-next").classList.add("hidden");
+  $("h-double").classList.add("hidden");
+  const names=tiedPids.map(pid=>(hostPlayers[pid]&&hostPlayers[pid].name)||"?").join(" vs. ");
+  const sdBanner=$("h-sd-banner"); sdBanner.textContent="🔥 ROZSTŘEL O 1. MÍSTO: "+names; sdBanner.classList.remove("hidden");
+  $("h-qcount").textContent="Rozstřel";
+  $("h-qtext").textContent=Q.q;
+  const m=$("h-media");
+  if(Q.img){m.src=Q.img;m.classList.remove("hidden");}else{m.classList.add("hidden");m.removeAttribute("src");}
+  const box=$("h-answers");box.innerHTML="";
+  Q.a.forEach((txt,ix)=>{
+    const d=document.createElement("div");d.className="ans c"+ix;d.dataset.idx=ix;
+    d.innerHTML='<span class="shape">'+SHAPES[ix]+'</span><span>'+escapeHtml(txt)+'</span>';
+    box.appendChild(d);
+  });
+  $("h-timer").textContent="";
+  db.ref("rooms/"+ROOM+"/meta").update({state:"sudden",sdRound,sdQIdx:idx,sdRot:rot,sdTied:tiedPids,sdLocked:true,sdDeadline:0});
+  db.ref("rooms/"+ROOM+"/sdAnswers/"+sdRound).remove();
+  const speech="Remíza na prvním místě! Rozhoduje rozstřel. "+Q.q+". Možnosti: "+Q.a.map((t,k)=>COLOR_NAMES[k]+": "+t).join(", ")+".";
+  const estMs=Math.min(40000,4000+speech.length*100);
+  clearTimeout(unlockFallbackTimer);
+  unlockFallbackTimer=setTimeout(()=>sdUnlock(idx,rot),estMs);
+  readThenUnlock(speech,()=>{ clearTimeout(unlockFallbackTimer); sdUnlock(idx,rot); });
+}
+
+function sdUnlock(idx,rot){
+  const deadline=Date.now()+SETTINGS.answerSeconds*1000;
+  sdUnlockTime=Date.now(); sdArrival={};
+  db.ref("rooms/"+ROOM+"/meta").update({sdLocked:false,sdDeadline:deadline});
+  const ref=db.ref("rooms/"+ROOM+"/sdAnswers/"+sdRound);
+  ref.on("value",snap=>{
+    const ans=snap.val()||{};
+    Object.keys(ans).forEach(pid=>{ if(sdArrival[pid]===undefined) sdArrival[pid]=Date.now(); });
+    if(sdTied.every(pid=>ans[pid]!==undefined)){ ref.off(); sdReveal(idx,rot); }
+  });
+  let left=SETTINGS.answerSeconds;
+  $("h-timer").textContent=left;
+  clearInterval(sdTimerInt);
+  sdTimerInt=setInterval(()=>{
+    left=Math.max(0,Math.ceil((deadline-Date.now())/1000));
+    $("h-timer").textContent=left;
+    $("h-timer").classList.toggle("urgent",left<=5&&left>0);
+    if(left<=5&&left>0)sndTick();
+    if(left<=0){clearInterval(sdTimerInt);ref.off();sdReveal(idx,rot);}
+  },250);
+}
+
+function sdReveal(idx,rot){
+  if(sdRevealedRound===sdRound)return; // pojistka proti souběhu časovače a odpovědi všech
+  sdRevealedRound=sdRound;
+  clearInterval(sdTimerInt);
+  const ref=db.ref("rooms/"+ROOM+"/sdAnswers/"+sdRound);
+  ref.once("value").then(snap=>{
+    const ans=snap.val()||{};
+    const Q=rotateQuestion(idx,rot);
+    let winner=null,bestAt=Infinity;
+    sdTied.forEach(pid=>{
+      if(ans[pid]===Q.correct){
+        const at=sdArrival[pid]!==undefined?sdArrival[pid]:Infinity;
+        if(at<bestAt){bestAt=at;winner=pid;}
+      }
+    });
+    db.ref("rooms/"+ROOM+"/meta").update({sdLocked:true});
+    document.querySelectorAll("#h-answers .ans").forEach(el=>{
+      const ix=+el.dataset.idx;
+      if(ix===Q.correct)el.classList.add("win"); else el.classList.add("dim");
+    });
+    sndCorrect();
+    const msgEl=$("h-reveal-msg"); msgEl.classList.remove("hidden");
+    if(winner){
+      const bonus=SETTINGS.speedScoring?(SETTINGS.speedBase+SETTINGS.speedBonus):1;
+      const wname=(hostPlayers[winner]&&hostPlayers[winner].name)||"?";
+      db.ref("rooms/"+ROOM+"/players/"+winner+"/score").transaction(s=>(s||0)+bonus).then(()=>{
+        msgEl.textContent="🏆 "+wname+" vyhrává rozstřel!";
+        speak(wname+" vyhrává rozstřel a první místo!");
+        setTimeout(()=>{ $("h-sd-banner").classList.add("hidden"); finishGame(); },2600);
+      });
+    }else{
+      msgEl.textContent="Nikdo z remízy to netrefil — rozstřel pokračuje!";
+      speak("Nikdo to netrefil, zkusíme to znovu.");
+      setTimeout(()=>{ $("h-sd-banner").classList.add("hidden"); checkTieOrFinish(); },2600);
+    }
+  });
 }
 
 function animateNumber(el,from,to,dur){
@@ -1256,17 +1482,26 @@ function hostNext(){
   db.ref("rooms/"+ROOM+"/meta/qIndex").once("value").then(s=>{
     const i=s.val();
     if(i>=gameLen()-1){
-      // restart – nová náhodná sada otázek
+      // restart – nová hra od začátku, nové téma se zase vyhlasuje
       prevStandings=[]; prevScores={};
-      gameQ=pickGameQuestions();
-      const updates={ quiz:gameQ };
+      usedQIdx=new Set(); gameQ=[]; sdRound=0;
+      GAME_TOTAL=Math.min(SETTINGS.questionsPerGame,QUESTIONS.length);
+      doubleIdx=GAME_TOTAL>1?Math.floor(Math.random()*GAME_TOTAL):-1;
+      const updates={ quiz:[] };
       Object.keys(hostPlayers).forEach(pid=>updates["players/"+pid+"/score"]=0);
       db.ref("rooms/"+ROOM).update(updates).then(()=>{
-        db.ref("rooms/"+ROOM+"/meta").update({total:gameQ.length});
-        hostShowQuestion(0);
+        db.ref("rooms/"+ROOM+"/meta").update({total:GAME_TOTAL, doubleIdx});
+        const size=Math.min(SETTINGS.voteBlockSize,GAME_TOTAL);
+        hostStartVote(size,()=>hostShowQuestion(0));
       });
     }else{
-      hostShowQuestion(i+1);
+      const next=i+1;
+      if(gameQ[next]===undefined){
+        const size=Math.max(1,Math.min(SETTINGS.voteBlockSize,gameLen()-next));
+        hostStartVote(size,()=>hostShowQuestion(next));
+      }else{
+        hostShowQuestion(next);
+      }
     }
   });
 }
@@ -1274,8 +1509,9 @@ function hostNext(){
 /* ============================================================
    7) OVLADAČ (TELEFON)
    ============================================================ */
-const ctrlSub={join:"ctrl-join",wait:"ctrl-wait",buzz:"ctrl-buzz",result:"ctrl-result"};
+const ctrlSub={join:"ctrl-join",wait:"ctrl-wait",buzz:"ctrl-buzz",vote:"ctrl-vote",result:"ctrl-result"};
 let myPid=null,myAnswer=null,myColor=AVATAR_COLORS[0],myAvatar=AVATARS[0],lastState="",lastQ=-1,ctrlTimerInt=null,lastRevealSoundQ=-1,myStreak=0;
+let ctrlMeta=null,myVoteRound=-1,myVote=null,lastSdRound=-1,mySdAnswer=null;
 
 function startController(){
   show("screen-ctrl");
@@ -1383,10 +1619,14 @@ function attachCtrlListener(){
 }
 
 function ctrlRender(m){
+  ctrlMeta=m;
   // konec
   if(m.state==="finished"){ ensureQuiz(()=>renderCtrlResult(m,true)); return; }
   // lobby / čekání
-  if(m.state==="lobby"){myStreak=0;sub(ctrlSub,"ctrl-wait");return;}
+  if(m.state==="lobby"){myStreak=0;myVote=null;mySdAnswer=null;sub(ctrlSub,"ctrl-wait");return;}
+  if(m.state==="vote"){ renderVoteCtrl(m); return; }
+  if(m.state==="voteResult"){ sub(ctrlSub,"ctrl-wait"); $("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Vybráno: "+(m.voteWinner||"?"); return; }
+  if(m.state==="sudden"){ renderSuddenCtrl(m); return; }
   if(m.state!=="question"&&m.state!=="reveal"){sub(ctrlSub,"ctrl-wait");return;}
 
   // pro otázku/reveal potřebujeme znát výběr otázek
@@ -1420,6 +1660,7 @@ function ctrlRender(m){
 function buildBuzz(qi){
   const Q=getQ(qi);
   $("c-qtext").textContent=Q.q;
+  $("c-double").classList.toggle("hidden", !ctrlMeta || qi!==ctrlMeta.doubleIdx);
   const box=$("c-buzz");box.innerHTML="";
   Q.a.forEach((txt,idx)=>{
     const b=document.createElement("button");b.className="buzz c"+idx;
@@ -1427,6 +1668,83 @@ function buildBuzz(qi){
     b.onclick=()=>sendAnswer(qi,idx);
     box.appendChild(b);
   });
+}
+
+/* ============================================================
+   HLASOVÁNÍ O TÉMATU — ovladač (telefon)
+   ============================================================ */
+function renderVoteCtrl(m){
+  if(m.voteRound!==myVoteRound){ myVoteRound=m.voteRound; myVote=null; buildVoteButtons(m.voteOptions||[]); }
+  if(myVote!==null){
+    sub(ctrlSub,"ctrl-wait");
+    $("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Hlasy se sčítají…";
+    return;
+  }
+  sub(ctrlSub,"ctrl-vote");
+  startVoteCtrlTimer(m.voteDeadline);
+}
+function buildVoteButtons(topics){
+  const box=$("v-ctrl-options"); box.innerHTML="";
+  topics.forEach((t,idx)=>{
+    const b=document.createElement("button");b.className="buzz c"+idx;
+    b.innerHTML='<span class="shape">'+SHAPES[idx]+'</span><span>'+escapeHtml(t)+'</span>';
+    b.onclick=()=>sendVote(idx);
+    box.appendChild(b);
+  });
+}
+function sendVote(idx){
+  if(myVote!==null||!ctrlMeta)return;
+  myVote=idx;
+  db.ref("rooms/"+ROOM+"/votes/"+ctrlMeta.voteRound+"/"+myPid).set(idx);
+  sndBuzz(); if(navigator.vibrate)navigator.vibrate(40);
+  sub(ctrlSub,"ctrl-wait");
+  $("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="Hlasy se sčítají…";
+}
+function startVoteCtrlTimer(deadline){
+  clearInterval(ctrlTimerInt);
+  function tick(){const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));$("v-ctrl-timer").textContent=left;$("v-ctrl-timer").classList.toggle("urgent",left<=3&&left>0);if(left<=0)clearInterval(ctrlTimerInt);}
+  tick();ctrlTimerInt=setInterval(tick,250);
+}
+
+/* ============================================================
+   ROZSTŘEL PŘI REMÍZE — ovladač (telefon)
+   ============================================================ */
+function renderSuddenCtrl(m){
+  const amTied=(m.sdTied||[]).includes(myPid);
+  if(!amTied){
+    sub(ctrlSub,"ctrl-wait");
+    $("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="🔥 Probíhá rozstřel o 1. místo…";
+    return;
+  }
+  if(m.sdRound!==lastSdRound){ lastSdRound=m.sdRound; mySdAnswer=null; buildSuddenBuzz(m); }
+  if(m.sdLocked){
+    if(mySdAnswer!==null){ showLocked(); return; }
+    sub(ctrlSub,"ctrl-wait");
+    $("ctrl-wait").querySelector(".statusbig:nth-child(2)").textContent="🔥 Rozstřel — připrav se…";
+    return;
+  }
+  if(mySdAnswer!==null){ showLocked(); return; }
+  sub(ctrlSub,"ctrl-buzz");
+  $("c-double").classList.add("hidden");
+  startCtrlTimer(m.sdDeadline);
+}
+function buildSuddenBuzz(m){
+  const Q=rotateQuestion(m.sdQIdx,m.sdRot);
+  $("c-qtext").textContent="🔥 "+Q.q;
+  const box=$("c-buzz");box.innerHTML="";
+  Q.a.forEach((txt,idx)=>{
+    const b=document.createElement("button");b.className="buzz c"+idx;
+    b.innerHTML='<span class="shape">'+SHAPES[idx]+'</span><span>'+escapeHtml(txt)+'</span>';
+    b.onclick=()=>sendSuddenAnswer(m.sdRound,idx);
+    box.appendChild(b);
+  });
+}
+function sendSuddenAnswer(round,idx){
+  if(mySdAnswer!==null)return;
+  mySdAnswer=idx;
+  db.ref("rooms/"+ROOM+"/sdAnswers/"+round+"/"+myPid).set(idx);
+  sndBuzz(); if(navigator.vibrate)navigator.vibrate(40);
+  showLocked();
 }
 
 function sendAnswer(qi,idx){
@@ -1499,6 +1817,6 @@ function renderCtrlResult(m,finished){
   });
 }
 </script>
-<div id="ver" style="position:fixed;right:8px;bottom:6px;z-index:9999;font-size:11px;color:rgba(255,255,255,.35);font-family:monospace;pointer-events:none">v16</div>
+<div id="ver" style="position:fixed;right:8px;bottom:6px;z-index:9999;font-size:11px;color:rgba(255,255,255,.35);font-family:monospace;pointer-events:none">v17</div>
 </body>
 </html>
