@@ -1176,12 +1176,15 @@ function hostStartVote(size,cb){
       const tiedIdx=counts.map((c,k)=>c===maxC?k:-1).filter(k=>k>=0);
       const winnerIdx=tiedIdx[Math.floor(Math.random()*tiedIdx.length)];
       const winner=topics[winnerIdx];
-      showVoteResultTV(winner,topics,mi);
+      const spoken="Vybráno téma "+winner+"! Tohle kolo hrajeme v módu "+mi.name+". "+mi.desc;
+      showVoteResultTV(winner,topics,mi,spoken);
       db.ref("rooms/"+ROOM+"/meta").update({state:"voteResult",voteWinner:winner});
       const picked=pickBlock(winner,size);
       gameQ=gameQ.concat(picked);
       db.ref("rooms/"+ROOM+"/quiz").set(gameQ);
-      setTimeout(cb,2200);
+      // dej hráčům čas si mód přečíst/poslechnout, než začne první otázka
+      const waitMs=(SETTINGS.readAloud&&("speechSynthesis"in window))?Math.min(9000,3500+spoken.length*80):3500;
+      setTimeout(cb,waitMs);
     });
   }
   votesRef.on("value",snap=>{
@@ -1212,14 +1215,14 @@ function updateVoteTimerTV(sec){
   const t=$("v-timer"); if(!t)return;
   t.textContent=sec; t.classList.toggle("urgent",sec<=3&&sec>0);
 }
-function showVoteResultTV(winner,topics,mi){
+function showVoteResultTV(winner,topics,mi,spoken){
   const box=$("v-options");
   [...box.children].forEach((el,idx)=>{ el.classList.toggle("win",topics[idx]===winner); el.classList.toggle("dim",topics[idx]!==winner); });
   const r=$("v-result"); r.textContent="Vybrané téma: "+winner; r.classList.remove("hidden");
   const modeEl=$("v-mode"); modeEl.textContent=mi.icon+" "+mi.short; modeEl.classList.remove("hidden");
   $("v-mode-desc").textContent=mi.desc;
   sndCorrect();
-  setTimeout(()=>speak("Vybráno téma "+winner+"! Tohle kolo hrajeme v módu "+mi.name+". "+mi.desc),500);
+  setTimeout(()=>speak(spoken),500);
 }
 
 // na konci hry: nejdřív postupně pogratuluj 3., 2. a 1. místu, pak ukaž celý žebříček
